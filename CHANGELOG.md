@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1
+
+- 旧会话的模型选择失效时，自动使用可用的默认模型，否则使用列表中的第一个可用模型；保留有效选择，列表加载失败或执行任务时不切换。
+- 在插件独立运行目录中适配 Science 0.1.70 的模型菜单；退出接入或卸载时恢复。其他界面版本暂不启用自动回退，可手动选择模型。
+
 ## 0.3.0
 
 - Publish as **Claude Science Local for Magpie**, package `claude-science-local-for-magpie`; retain the existing agent ID, local data paths and legacy CLI alias for upgrades.

@@ -131,6 +131,7 @@ test('lock excludes mutations before touching managed journals', async () => {
 });
 test('upgrade and rollback retain sessions, and reinstall preserves authentication', async () => {
   const {createInstaller} = await import('../src/cli.js');
+  const {managedWrite} = await import('../src/files.js');
   const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'science-rollback-')));
   try {
     const source = path.join(home, 'source');
@@ -162,10 +163,20 @@ test('upgrade and rollback retain sessions, and reinstall preserves authenticati
     fs.appendFileSync(path.join(source, 'src', 'runtime.js'), '//two');
     const second = await installer.execute({...options, command: 'upgrade'});
     assert.notEqual(first.deployment.id, second.deployment.id);
+    const uiJournal = path.join(path.dirname(installer.stateFile), 'science-ui-journal.json');
+    const uiIndex = path.join(first.data, 'index.html');
+    const uiAsset = path.join(first.data, 'new-assets.js');
+    fs.writeFileSync(uiIndex, 'original');
+    managedWrite(uiIndex, 'adapted', uiJournal);
+    managedWrite(uiAsset, 'copied UI', uiJournal);
     const restored = await installer.execute({...options, command: 'rollback'});
     assert.equal(restored.deployment.id, first.deployment.id);
+    assert.equal(fs.readFileSync(uiIndex, 'utf8'), 'original');
+    assert.equal(fs.existsSync(uiAsset), false, 'rollback to an older runtime restores its UI');
     assert.equal(fs.readFileSync(path.join(first.data, 'session'), 'utf8'), 'keep');
+    managedWrite(uiIndex, 'adapted after interrupted manager', uiJournal);
     await installer.execute({...options, command: 'uninstall'});
+    assert.equal(fs.readFileSync(uiIndex, 'utf8'), 'original');
     fs.mkdirSync(path.dirname(first.originalConfig), {recursive: true});
     fs.writeFileSync(first.originalConfig, 'user_setting = "preserve-after-uninstall"\n');
     await installer.execute({...options, command: 'install'});

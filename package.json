@@ -1,6 +1,6 @@
 {
   "name": "claude-science-local-for-magpie",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "让原版 Claude Science 使用 Magpie 的模型，并在 Science 内自由切换（macOS）。",
   "type": "module",
   "scripts": {

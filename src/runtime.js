@@ -6,6 +6,7 @@ import {pathToFileURL} from 'node:url';
 import {enabledSciencePlugins} from './plugin-identity.js';
 import {createBridge, validateConfig} from './bridge.js';
 import {managedWrite, restoreAll} from './files.js';
+import {installModelFallback} from './science-ui.js';
 import {
   readProcessIdentity,
   ownsDaemon,
@@ -48,7 +49,8 @@ export async function runRuntime(
   const pluginSpec = state.pluginSpec || state.project;
   const root = path.dirname(state.statusFile),
     leaseFile = path.join(root, 'daemon-lease.json'),
-    ownerFile = path.join(root, 'runtime-owner.json');
+    ownerFile = path.join(root, 'runtime-owner.json'),
+    uiJournal = path.join(root, 'science-ui-journal.json');
   const owner = {pid: process.pid, identity: readProcessIdentity(process.pid)};
   if (!owner.identity) throw Error('Cannot establish runtime process identity');
   let child = null,
@@ -63,7 +65,8 @@ export async function runRuntime(
   let binaryStamp = null,
     scienceVersion = null,
     active = false,
-    activePluginSpec = null;
+    activePluginSpec = null,
+    modelFallback = null;
   function status(value) {
     atomicJSON(state.statusFile, {
       at: new Date().toISOString(),
@@ -90,8 +93,12 @@ export async function runRuntime(
     });
   }
   function restore() {
+    const ui = restoreAll(uiJournal);
     const result = restoreAll(state.configJournal);
     active = false;
+    modelFallback = null;
+    if (ui.conflicts.length)
+      throw Error('Science UI has user edits; automatic restoration refused. Run doctor.');
     if (result.conflicts.length)
       throw Error(
         'Science configuration has user edits; automatic restoration refused. Run doctor.',
@@ -226,6 +233,15 @@ export async function runRuntime(
     lease = {...ready.candidate, fingerprint};
     atomicJSON(leaseFile, lease);
     scienceVersion = ready.version;
+    try {
+      modelFallback = installModelFallback({
+        data: state.data,
+        version: scienceVersion,
+        journal: uiJournal,
+      });
+    } catch (e) {
+      modelFallback = {state: 'error', reason: e.message};
+    }
     // Keep the original App's configuration intact until its daemon is verified.
     managedWrite(state.originalConfig, fs.readFileSync(state.scienceConfig), state.configJournal);
     active = true;
@@ -251,6 +267,7 @@ export async function runRuntime(
         sciencePid: child.pid,
         scienceIdentity: lease?.identity,
         scienceVersion,
+        modelFallback,
         model: c.model,
         modelCount: c.models?.length ?? 1,
         bridgePort: state.bridgePort,

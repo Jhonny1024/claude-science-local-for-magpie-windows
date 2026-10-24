@@ -67,7 +67,7 @@ export function createInstaller(deps = {}) {
       command.includes(stateFile)
     );
   };
-  const stop =
+  const stopService =
     deps.stopService ||
     (async (state) => {
       run('/bin/launchctl', ['bootout', domain + '/' + label], true);
@@ -79,6 +79,13 @@ export function createInstaller(deps = {}) {
         'Managed service did not stop; leaving files intact. Inspect doctor before retrying.',
       );
     });
+  const stop = async (state) => {
+    await stopService(state);
+    // Also recover after an interrupted manager or before rollback to a runtime
+    // predating the optional UI adapter.
+    if (restoreAll(path.join(root, 'science-ui-journal.json')).conflicts.length)
+      throw Error('Science UI has user edits; resolve restore conflicts before continuing.');
+  };
   const healthy =
     deps.waitHealthy ||
     (async (state) => {

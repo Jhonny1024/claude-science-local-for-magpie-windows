@@ -46,6 +46,7 @@ try {
     'src/runtime.js',
     'src/bridge.js',
     'src/models.js',
+    'src/science-ui.js',
     'LICENSE',
     'NOTICE.md',
   ])
