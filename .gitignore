@@ -1,0 +1,14 @@
+node_modules/
+work/
+.sandbox/
+coverage/
+*.log
+*.tgz
+.DS_Store
+.env
+.env.*
+state.json
+private-journal.json
+config-journal.json
+install-journal.json
+verification.json
