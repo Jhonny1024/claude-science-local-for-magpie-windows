@@ -1,6 +1,8 @@
 # Claude Science Local for Magpie
 
-让原版 **Claude Science** 使用你在 **Magpie** 中配置的模型，并在 Science 内自由切换。
+**无需登录 Claude 账号，直接在原版 Claude Science 中使用 Magpie 配置的模型。**
+
+沿用你在 Magpie 中已有的模型账号和额度，支持在 Science 内自由切换模型。
 
 非官方插件，目前支持 macOS。不提供模型账号或额外额度。
 
