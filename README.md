@@ -8,8 +8,6 @@
 
 准备好 Claude Science、正在运行的 Magpie，以及官方 [Node.js 22/24](https://nodejs.org/zh-cn/download)。Magpie 中至少有一个可用模型。
 
-先结束 Science 任务，断开 Magpie 内置的 Science 接入，停用其他 Science 插件及其后台服务。
-
 **① 在 Magpie → 插件 → 添加插件中填入：**
 
 ```text
