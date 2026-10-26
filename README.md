@@ -61,7 +61,7 @@ Jhonny1024/claude-science-local-for-magpie-windows
 
 ```sh
 git clone https://github.com/Jhonny1024/claude-science-local-for-magpie-windows.git
-cd claude-science-local-for-magpie
+cd claude-science-local-for-magpie-windows
 npm ci --ignore-scripts
 node src/cli.js install
 ```
