@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.2-windows.1 (local Windows port)
+
+- Add Windows executable discovery, copied Node.exe deployment, private ACLs, CIM process ownership and a graceful shutdown control record.
+- Add hidden per-user login startup with UTF-16 paths and persistent logs; recover owned Science orphans on uninstall.
+- Keep Windows runtime data and Science temporary files inside the project by default; keep npm cache under `work/`.
+- Stage a static Windows Agent declaration compatible with Magpie’s sandbox, without changing the macOS Agent entry or using Node APIs in plugin hooks.
+- Add Windows lifecycle/native integration coverage and a Windows/macOS CI matrix.
+
 ## 0.3.1
 
 - 旧会话的模型选择失效时，自动使用可用的默认模型，否则使用列表中的第一个可用模型；保留有效选择，列表加载失败或执行任务时不切换。

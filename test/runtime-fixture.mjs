@@ -6,9 +6,10 @@ import net from 'node:net';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {pathToFileURL} from 'node:url';
+import {requestShutdown} from '../src/windows-service.js';
 import {signalOwnedDaemon} from '../src/processes.js';
 export const pause = (ms) => new Promise((r) => setTimeout(r, ms));
-export async function until(check, timeout = 10000) {
+export async function until(check, timeout = 25000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     if (await check()) return;
@@ -48,6 +49,12 @@ export async function fixture({missing = false, noLock = false} = {}) {
     sciencePort,
     sandboxPort,
   };
+  const fixtureScript = path.join(root, 'fake-science.cjs');
+  if (process.platform === 'win32') {
+    state.binary += '.exe';
+    state.binaryArgs = [fixtureScript];
+    if (!missing) fs.copyFileSync(process.execPath, state.binary);
+  }
   fs.mkdirSync(state.data);
   fs.writeFileSync(state.originalConfig, '# ORIGINAL\n');
   fs.writeFileSync(state.scienceConfig, 'data_dir="managed"\n');
@@ -60,7 +67,7 @@ export async function fixture({missing = false, noLock = false} = {}) {
   fs.writeFileSync(state.pluginsFile, JSON.stringify({plugins: [{spec: state.pluginSpec}]}));
   if (!missing)
     fs.writeFileSync(
-      state.binary,
+      process.platform === 'win32' ? fixtureScript : state.binary,
       `#!${process.execPath}
 const fs=require('node:fs'),http=require('node:http'),path=require('node:path');
 const arg=n=>process.argv[process.argv.indexOf(n)+1],data=arg('--data-dir'),port=Number(arg('--port'));
@@ -75,7 +82,7 @@ process.on('SIGTERM',()=>{try{fs.unlinkSync(path.join(data,'operon.lock'));}catc
   const runner = path.join(root, 'manager.mjs');
   fs.writeFileSync(
     runner,
-    `import fs from 'node:fs'; import {runRuntime} from ${JSON.stringify(pathToFileURL(path.resolve('src/runtime.js')).href)}; await runRuntime(JSON.parse(fs.readFileSync(process.argv[2])),{pollMs:80,startTimeoutMs:1200,stopTimeoutMs:1200,backoffMs:500});`,
+    `import fs from 'node:fs'; import {runRuntime} from ${JSON.stringify(pathToFileURL(path.resolve('src/runtime.js')).href)}; await runRuntime(JSON.parse(fs.readFileSync(process.argv[2])),{pollMs:100,startTimeoutMs:8000,stopTimeoutMs:2500,backoffMs:500});`,
   );
   const children = [];
   const status = () => {
@@ -86,15 +93,21 @@ process.on('SIGTERM',()=>{try{fs.unlinkSync(path.join(data,'operon.lock'));}catc
     }
   };
   const start = () => {
-    const p = spawn(process.execPath, [runner, file], {stdio: 'ignore'});
+    const fd = fs.openSync(path.join(root, 'manager.log'), 'a');
+    const p = spawn(process.execPath, [runner, file], {
+      stdio: ['ignore', fd, fd],
+      windowsHide: true,
+    });
+    fs.closeSync(fd);
     children.push(p);
     return p;
   };
   const stop = async (p, signal = 'SIGTERM') => {
     if (p.exitCode !== null || p.signalCode !== null) return;
     const done = once(p, 'exit');
-    p.kill(signal);
-    const timer = setTimeout(() => p.kill('SIGKILL'), 4000);
+    if (process.platform === 'win32' && signal === 'SIGTERM') requestShutdown(state, status());
+    else p.kill(signal);
+    const timer = setTimeout(() => p.kill('SIGKILL'), 20000);
     try {
       await done;
     } finally {
@@ -111,5 +124,5 @@ process.on('SIGTERM',()=>{try{fs.unlinkSync(path.join(data,'operon.lock'));}catc
     await new Promise((r) => upstream.close(r));
     fs.rmSync(root, {recursive: true, force: true});
   };
-  return {root, state, file, start, stop, status, cleanup, selection};
+  return {root, state, file, start, stop, status, cleanup, selection, fixtureScript};
 }

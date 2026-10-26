@@ -12,3 +12,5 @@ private-journal.json
 config-journal.json
 install-journal.json
 verification.json
+
+.science-local-runtime/

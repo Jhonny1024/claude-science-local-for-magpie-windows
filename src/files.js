@@ -83,14 +83,17 @@ function atomicWrite(file, bytes, mode = 0o600) {
     fd = undefined;
     inspect(file);
     fs.renameSync(temporary, file);
-    const directory = fs.openSync(
-      path.dirname(file),
-      fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW,
-    );
-    try {
-      fs.fsyncSync(directory);
-    } finally {
-      fs.closeSync(directory);
+    // Windows cannot open a directory for fsync; the file itself is flushed above.
+    if (process.platform !== 'win32') {
+      const directory = fs.openSync(
+        path.dirname(file),
+        fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW,
+      );
+      try {
+        fs.fsyncSync(directory);
+      } finally {
+        fs.closeSync(directory);
+      }
     }
   } finally {
     if (fd !== undefined) fs.closeSync(fd);

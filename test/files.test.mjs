@@ -24,8 +24,8 @@ test('writes privately and removes only originally absent files on restore', (t)
   const {dir, file, journal} = fixture(t);
   write(file, 'new', journal);
   assert.equal(fs.readFileSync(file, 'utf8'), 'new');
-  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
-  assert.equal(fs.statSync(journal).mode & 0o777, 0o600);
+  if (process.platform !== 'win32') assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  if (process.platform !== 'win32') assert.equal(fs.statSync(journal).mode & 0o777, 0o600);
   assert.deepEqual(restore(journal), {restored: [file], conflicts: []});
   assert.equal(fs.existsSync(file), false);
   assert.equal(fs.existsSync(path.dirname(file)), true);
@@ -40,7 +40,7 @@ test('restores exact original bytes and permissions after multiple managed updat
   write(file, Buffer.from('second'), journal);
   assert.deepEqual(restore(journal), {restored: [file], conflicts: []});
   assert.deepEqual(fs.readFileSync(file), original);
-  assert.equal(fs.statSync(file).mode & 0o777, 0o640);
+  if (process.platform !== 'win32') assert.equal(fs.statSync(file).mode & 0o777, 0o640);
 });
 test('refuses update drift and preserves user edits on restore', (t) => {
   const {file, journal} = fixture(t);
@@ -71,15 +71,15 @@ test('refuses target and journal symlinks including ancestor components', (t) =>
   const real = path.join(dir, 'real');
   fs.mkdirSync(real);
   const link = path.join(dir, 'link');
-  fs.symlinkSync(real, link);
+  if (!symlink(real, link, t)) return;
   assert.throws(() => write(path.join(link, 'config'), 'x', journal), /symlink/i);
   fs.mkdirSync(path.dirname(file));
   fs.writeFileSync(path.join(real, 'original'), 'secret');
-  fs.symlinkSync(path.join(real, 'original'), file);
+  if (!symlink(path.join(real, 'original'), file, t)) return;
   assert.throws(() => write(file, 'x', journal), /symlink/i);
   const other = path.join(dir, 'other');
   assert.throws(() => write(other, 'x', path.join(link, 'journal')), /symlink/i);
-  fs.symlinkSync(path.join(real, 'original'), journal);
+  if (!symlink(path.join(real, 'original'), journal, t)) return;
   assert.throws(() => write(other, 'x', journal), /symlink/i);
   assert.throws(() => restore(journal), /symlink/i);
   assert.equal(fs.readFileSync(path.join(real, 'original'), 'utf8'), 'secret');
@@ -90,7 +90,7 @@ test('restoration reports a substituted symlink instead of following it', (t) =>
   const other = path.join(dir, 'other');
   fs.writeFileSync(other, 'user');
   fs.unlinkSync(file);
-  fs.symlinkSync(other, file);
+  if (!symlink(other, file, t)) return;
   assert.deepEqual(restore(journal), {restored: [], conflicts: [file]});
   assert.equal(fs.readFileSync(other, 'utf8'), 'user');
 });
@@ -158,9 +158,9 @@ test('restores original permissions when managed content equals original bytes',
   fs.mkdirSync(path.dirname(file));
   fs.writeFileSync(file, 'same', {mode: 0o640});
   write(file, 'same', journal);
-  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  if (process.platform !== 'win32') assert.equal(fs.statSync(file).mode & 0o777, 0o600);
   assert.deepEqual(restore(journal), {restored: [file], conflicts: []});
-  assert.equal(fs.statSync(file).mode & 0o777, 0o640);
+  if (process.platform !== 'win32') assert.equal(fs.statSync(file).mode & 0o777, 0o640);
 });
 
 test('restoring multiple files keeps only drift entries for a later retry', (t) => {
@@ -173,3 +173,18 @@ test('restoring multiple files keeps only drift entries for a later retry', (t) 
   assert.equal(JSON.parse(fs.readFileSync(journal)).entries.length, 1);
   assert.equal(fs.readFileSync(file, 'utf8'), 'user edit');
 });
+
+function symlink(target, link, t, type) {
+  try {
+    fs.symlinkSync(target, link, type);
+    return true;
+  } catch (e) {
+    if (process.platform === 'win32' && e.code === 'EPERM') {
+      t.skip(
+        'File symlinks require Windows Developer Mode or elevation; junction coverage runs separately',
+      );
+      return false;
+    }
+    throw e;
+  }
+}

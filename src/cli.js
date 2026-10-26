@@ -7,6 +7,15 @@ import {spawnSync} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
 import {createInterface} from 'node:readline/promises';
 import {enabledSciencePlugins, isPublishedSciencePlugin} from './plugin-identity.js';
+import {
+  startupPath,
+  startupScript,
+  secureDirectory,
+  ownsManager,
+  launchWindows,
+  requestShutdown,
+  stopWindowsOrphan,
+} from './windows-service.js';
 import {makeTicket} from './ticket.js';
 import {managedWrite, restoreAll} from './files.js';
 import {scienceConfig, checkOriginalConfig, launchPlist, label} from './setup.js';
@@ -35,6 +44,7 @@ function defaultRun(bin, args, allowFailure = false) {
     encoding: 'utf8',
     timeout: 45000,
     env: {...process.env, MAGPIE_NO_STATS: '1'},
+    windowsHide: true,
   });
   if (!allowFailure && (r.status !== 0 || r.error))
     throw Error(
@@ -44,15 +54,25 @@ function defaultRun(bin, args, allowFailure = false) {
 }
 
 export function createInstaller(deps = {}) {
+  const platform = deps.platform || process.platform;
+  const windows = platform === 'win32';
   const home = deps.home || os.homedir(),
     project = deps.project || sourceProject,
     env = deps.env || process.env;
-  const root = path.join(home, '.config', 'magpie', 'science-local-runtime'),
-    configRoot = path.dirname(root);
+  const configRoot = path.join(home, '.config', 'magpie');
+  const root = path.resolve(
+    deps.runtimeRoot ||
+      env.SCIENCE_LOCAL_HOME ||
+      (windows
+        ? path.join(project, '.science-local-runtime')
+        : path.join(configRoot, 'science-local-runtime')),
+  );
   const stateFile = path.join(root, 'state.json'),
     privateJournal = path.join(root, 'private-journal.json'),
     installJournal = path.join(root, 'install-journal.json');
-  const plist = path.join(home, 'Library', 'LaunchAgents', label + '.plist'),
+  const plist = windows
+      ? startupPath(home)
+      : path.join(home, 'Library', 'LaunchAgents', label + '.plist'),
     domain = `gui/${process.getuid?.() ?? 0}`;
   const run = deps.run || defaultRun,
     fetcher = deps.fetch || fetch,
@@ -61,6 +81,7 @@ export function createInstaller(deps = {}) {
   const ownedManager = (state) => {
     const status = json(state.statusFile);
     if (!status?.pid) return false;
+    if (windows) return ownsManager(state, stateFile, status);
     const command = run('/bin/ps', ['-p', String(status.pid), '-o', 'command='], true).stdout || '';
     return (
       command.includes(path.join(state.pluginSpec || state.project, 'src', 'runtime.js')) &&
@@ -70,10 +91,17 @@ export function createInstaller(deps = {}) {
   const stopService =
     deps.stopService ||
     (async (state) => {
-      run('/bin/launchctl', ['bootout', domain + '/' + label], true);
-      for (let i = 0; i < 150; i++) {
+      if (windows) {
+        const status = json(state.statusFile);
+        if (!ownedManager(state)) {
+          await stopWindowsOrphan(state, run);
+          return;
+        }
+        requestShutdown(state, status);
+      } else run('/bin/launchctl', ['bootout', domain + '/' + label], true);
+      for (let i = 0; i < (windows ? 60 : 150); i++) {
         if (!ownedManager(state)) return;
-        await sleep(100);
+        await sleep(windows ? 250 : 100);
       }
       throw Error(
         'Managed service did not stop; leaving files intact. Inspect doctor before retrying.',
@@ -147,20 +175,23 @@ export function createInstaller(deps = {}) {
       ]);
     run(state.magpie, ['science-local', selectionValue(state)]);
   }
-  function launch(state) {
+  async function launch(state) {
     const serviceLog = path.join(root, 'service.log');
     if (!fs.existsSync(serviceLog)) save(serviceLog, '');
     managedWrite(
       plist,
-      launchPlist({
-        node: state.node,
-        script: path.join(state.pluginSpec || state.project, 'src', 'runtime.js'),
-        state: stateFile,
-        log: serviceLog,
-      }),
+      windows
+        ? startupScript(state, stateFile)
+        : launchPlist({
+            node: state.node,
+            script: path.join(state.pluginSpec || state.project, 'src', 'runtime.js'),
+            state: stateFile,
+            log: serviceLog,
+          }),
       installJournal,
     );
-    run('/bin/launchctl', ['bootstrap', domain, plist]);
+    if (windows) await launchWindows(state, stateFile, serviceLog);
+    else run('/bin/launchctl', ['bootstrap', domain, plist]);
   }
   async function install(options, previous) {
     if (options.command === 'install' && previous && previous.installed !== false)
@@ -196,18 +227,25 @@ export function createInstaller(deps = {}) {
         explicit: options.science || previous?.binary,
         env,
         home,
+        platform,
       });
     let deployment;
     if (options.command === 'rollback') {
       deployment = previous.previousDeployment;
       if (!deployment) throw Error('No previous deployment available');
       verifyDeployment(deployment);
-    } else deployment = stageDeployment({project, root, node: deps.node || process.execPath});
+    } else
+      deployment = stageDeployment({project, root, node: deps.node || process.execPath, platform});
     // Inspect the actual copied executable (including rollback targets), before stopping any service.
     // Injected service runners use fake binaries and test library validation separately.
-    if (!deps.run) {
+    if (!deps.run && !windows) {
       const inspected = run('/usr/bin/otool', ['-L', deployment.node]);
       validateNodeLibraries(inspected.stdout);
+    }
+    if (!deps.run && windows) {
+      const version = run(deployment.node, ['--version']).stdout.trim();
+      if (!/^v(?:2[2-9]|[3-9]\d)\./.test(version))
+        throw Error('Copied Windows Node runtime must be version 22 or newer');
     }
     const oldState = read(stateFile),
       oldScience = previous ? read(previous.scienceConfig) : '',
@@ -233,7 +271,7 @@ export function createInstaller(deps = {}) {
       enabledBefore.filter((e) => isPublishedSciencePlugin(e.spec)).at(-1)?.spec ||
       previous?.sourceSpec;
     const registrationSpec =
-      options.command === 'rollback' ? deployment.path : sourceSpec || deployment.path;
+      windows || options.command === 'rollback' ? deployment.path : sourceSpec || deployment.path;
     if (previous) await stop(previous);
     let reserved,
       switched = false;
@@ -242,6 +280,7 @@ export function createInstaller(deps = {}) {
       const state = {
         ...(previous || {}),
         installed: true,
+        platform,
         project: deployment.path,
         pluginSpec: deployment.path,
         registrationSpec,
@@ -254,6 +293,7 @@ export function createInstaller(deps = {}) {
             : previous?.previousDeployment,
         magpie,
         binary,
+        ...(deps.scienceArgs ? {binaryArgs: deps.scienceArgs} : {}),
         model,
         gateway,
         gatewayOverride,
@@ -300,7 +340,7 @@ export function createInstaller(deps = {}) {
       if (!previous) run(binary, ['stop', '--data-dir', originalDir]);
       await reserved.release();
       reserved = null;
-      launch(state);
+      await launch(state);
       await healthy(state);
       log(
         `${options.command === 'rollback' ? 'Rolled back' : previous ? 'Upgraded' : 'Installed'}. Default model: ${model}. ${selectionValue(state) === 'magpie' ? 'Choose models in Science; manage the available list in Magpie. ' : ''}Open the original Claude Science app.`,
@@ -335,7 +375,7 @@ export function createInstaller(deps = {}) {
             for (const entry of enabledBefore) run(magpie, ['plugin', 'on', entry.spec]);
             if (enabledBefore.length) run(magpie, ['science-local', selectionValue(recovered)]);
           } else select(recovered);
-          launch(recovered);
+          await launch(recovered);
           if (!registryBefore || enabledBefore.length) await healthy(recovered);
         } else {
           run(magpie, ['science-local', 'default'], true);
@@ -375,8 +415,8 @@ export function createInstaller(deps = {}) {
       }
       return;
     }
-    if ((deps.platform || process.platform) !== 'darwin')
-      throw Error('The managed desktop service currently supports macOS only');
+    if (!['darwin', 'win32'].includes(platform))
+      throw Error('The managed desktop service supports macOS and Windows only');
     if (env.XDG_CONFIG_HOME && path.resolve(env.XDG_CONFIG_HOME) !== path.join(home, '.config'))
       throw Error('Custom XDG_CONFIG_HOME is not supported');
     // Reject symlink components before creating the lock; journaling starts only while locked.
@@ -389,6 +429,7 @@ export function createInstaller(deps = {}) {
       if (path.dirname(current) === current) break;
     }
     fs.mkdirSync(root, {recursive: true, mode: 0o700});
+    if (windows) (deps.secureDirectory || secureDirectory)(root, run);
     const lock = path.join(root, 'install.lock');
     let fd;
     try {
@@ -417,7 +458,7 @@ export function createInstaller(deps = {}) {
       if (options.command === 'restart') {
         if (state.deployment) verifyDeployment(state.deployment);
         await stop(state);
-        launch({...state, node: state.node || process.execPath});
+        await launch({...state, node: state.node || process.execPath});
         await healthy(state);
         log('Restarted.');
         return;

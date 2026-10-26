@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import {spawn} from 'node:child_process';
+import {spawn, spawnSync} from 'node:child_process';
 import {createHash, randomBytes} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
 import {enabledSciencePlugins} from './plugin-identity.js';
@@ -44,7 +44,12 @@ function stamp(file) {
 
 export async function runRuntime(
   state,
-  {pollMs = 2000, startTimeoutMs = 45000, stopTimeoutMs = 8000, backoffMs = 10000} = {},
+  {
+    pollMs = 2000,
+    startTimeoutMs = 45000,
+    stopTimeoutMs = process.platform === 'win32' ? 20000 : 8000,
+    backoffMs = 10000,
+  } = {},
 ) {
   const pluginSpec = state.pluginSpec || state.project;
   const root = path.dirname(state.statusFile),
@@ -114,7 +119,15 @@ export async function runRuntime(
   }
   async function stopLease(record) {
     if (!ownsDaemon(record, state)) return;
-    signalOwnedDaemon(record, state);
+    if (process.platform === 'win32' && !state.binaryArgs) {
+      // Node's Windows SIGTERM is forceful. Ask Science to flush and exit first.
+      const stopped = spawnSync(
+        state.binary,
+        ['stop', '--data-dir', state.data, '--config', state.scienceConfig],
+        {encoding: 'utf8', timeout: stopTimeoutMs, windowsHide: true},
+      );
+      if (stopped.error) console.error('Science graceful stop:', stopped.error.message);
+    } else signalOwnedDaemon(record, state);
     const deadline = Date.now() + stopTimeoutMs;
     while (Date.now() < deadline && ownsDaemon(record, state)) await sleep(40);
     if (ownsDaemon(record, state)) {
@@ -187,9 +200,16 @@ export async function runRuntime(
       '--no-auto-update',
     ];
     if (state.sandboxPort) args.push('--sandbox-port', String(state.sandboxPort));
-    const proc = spawn(state.binary, args, {
+    const temporary = path.join(root, 'tmp');
+    if (process.platform === 'win32') fs.mkdirSync(temporary, {recursive: true, mode: 0o700});
+    const proc = spawn(state.binary, [...(state.binaryArgs || []), ...args], {
+      windowsHide: true,
+      // A Windows detached child survives a manager crash; its verified lease
+      // lets the replacement manager recover it rather than losing active state.
+      detached: process.platform === 'win32',
       env: {
         ...process.env,
+        ...(process.platform === 'win32' ? {TEMP: temporary, TMP: temporary} : {}),
         ANTHROPIC_BASE_URL: `http://127.0.0.1:${state.bridgePort}`,
         ANTHROPIC_API_KEY: '',
         ANTHROPIC_AUTH_TOKEN: '',
@@ -303,6 +323,7 @@ export async function runRuntime(
     if (shuttingDown) return shuttingDown;
     stopping = true;
     clearTimeout(timer);
+    clearInterval(controlTimer);
     shuttingDown = (async () => {
       if (initializing) await initializing.catch(() => {});
       if (inFlight) await inFlight;
@@ -359,7 +380,25 @@ export async function runRuntime(
     inFlight = null;
     if (!stopping) timer = setTimeout(loop, pollMs);
   }
+  // Windows has no catchable external SIGTERM. The installer requests a graceful
+  // shutdown through a private, identity-bound control record instead.
+  let controlTimer;
   acquireRuntimeOwner(ownerFile, owner);
+  const stopFile = path.join(root, 'stop-request.json');
+  controlTimer = setInterval(() => {
+    try {
+      const request = readJSON(stopFile);
+      if (request?.pid === owner.pid && request.identity === owner.identity) {
+        fs.unlinkSync(stopFile);
+        shutdown().catch((e) => {
+          console.error(e.message);
+          process.exitCode = 1;
+        });
+      }
+    } catch (e) {
+      console.error('Control request:', e.message);
+    }
+  }, 250);
   process.on('SIGTERM', onSignal);
   process.on('SIGINT', onSignal);
   initializing = (async () => {

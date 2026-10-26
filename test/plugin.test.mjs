@@ -80,3 +80,16 @@ test('Science icon is an offline 128px PNG shared by agent and plugin metadata',
   const metadata = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   assert.equal(metadata.magpie.icon, SCIENCE_ICON);
 });
+
+test('Windows agent declaration uses only plugin-local imports and static expanded paths', async () => {
+  const {agent, connect} = await import('../src/agent-windows.js');
+  assert.equal(agent.dir, '~/AppData/Local/Programs/ClaudeScience');
+  assert.equal(agent.bin, 'claude-science');
+  assert.equal(agent.id, 'science-local');
+  assert.equal(typeof connect, 'function');
+  for (const file of ['src/agent.js', 'src/agent-windows.js'])
+    assert.doesNotMatch(
+      readFileSync(file, 'utf8'),
+      /(?:from|import)\s*['"]node:|process\.platform|os\.homedir/,
+    );
+});

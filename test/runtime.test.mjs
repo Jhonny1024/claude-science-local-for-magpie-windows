@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import {fixture, until, pause} from './runtime-fixture.mjs';
+import {requestShutdown} from '../src/windows-service.js';
 import {readProcessIdentity} from '../src/processes.js';
 
 test('healthy owned daemon is required before redirect; disconnect restores original config', async () => {
@@ -122,9 +123,9 @@ test('shutdown during orphan recovery does not open a bridge after releasing own
   const f = await fixture();
   try {
     fs.writeFileSync(
-      f.state.binary,
+      process.platform === 'win32' ? f.fixtureScript : f.state.binary,
       fs
-        .readFileSync(f.state.binary, 'utf8')
+        .readFileSync(process.platform === 'win32' ? f.fixtureScript : f.state.binary, 'utf8')
         .replace(
           "process.on('SIGTERM',()=>{",
           "process.on('SIGTERM',()=>{});process.on('never',()=>{",
@@ -144,8 +145,10 @@ test('shutdown during orphan recovery does not open a bridge after releasing own
       }
     });
     await pause(150);
-    second.kill('SIGTERM');
-    await until(() => second.exitCode !== null || second.signalCode !== null, 3000);
+    if (process.platform === 'win32')
+      requestShutdown(f.state, {pid: second.pid, identity: readProcessIdentity(second.pid)});
+    else second.kill('SIGTERM');
+    await until(() => second.exitCode !== null || second.signalCode !== null, 10000);
     assert.equal(second.signalCode, null);
     assert.equal(second.exitCode, 0);
     assert.equal(fs.existsSync(path.join(f.root, 'runtime-owner.json')), false);

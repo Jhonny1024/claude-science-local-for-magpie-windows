@@ -36,13 +36,13 @@ test('release copies only runtime production tree and Node; verifies tampering',
     fs.rmSync(d, {recursive: true, force: true});
   }
 });
-test('release rejects dependency symlinks', () => {
+test('release rejects dependency symlinks', (t) => {
   assert.equal(typeof api.stageDeployment, 'function');
   const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'science-link-')));
   try {
     fs.mkdirSync(path.join(d, 'src'));
     fs.writeFileSync(path.join(d, 'package.json'), '{"dependencies":{}}');
-    fs.symlinkSync('/etc/passwd', path.join(d, 'src', 'escape'));
+    if (!symlink('/etc/passwd', path.join(d, 'src', 'escape'), t)) return;
     assert.throws(
       () => api.stageDeployment({project: d, root: path.join(d, 'owned'), node: process.execPath}),
       /symlink/,
@@ -51,12 +51,12 @@ test('release rejects dependency symlinks', () => {
     fs.rmSync(d, {recursive: true, force: true});
   }
 });
-test('metadata symlink cannot escape release input tree', () => {
+test('metadata symlink cannot escape release input tree', (t) => {
   const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'science-meta-')));
   try {
     fs.mkdirSync(path.join(d, 'src'));
     fs.writeFileSync(path.join(d, 'external.json'), '{"dependencies":{}}');
-    fs.symlinkSync(path.join(d, 'external.json'), path.join(d, 'package.json'));
+    if (!symlink(path.join(d, 'external.json'), path.join(d, 'package.json'), t)) return;
     assert.throws(
       () => api.stageDeployment({project: d, root: path.join(d, 'owned'), node: process.execPath}),
       /symlink/,
@@ -88,7 +88,7 @@ test('portable Node validation accepts macOS system libraries and rejects packag
   );
   assert.throws(() => api.validateNodeLibraries(''), /inspect/);
 });
-test('deployment resolves npm-hoisted dependencies and rejects symlinked package roots', () => {
+test('deployment resolves npm-hoisted dependencies and rejects symlinked package roots', (t) => {
   const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'science-hoisted-')));
   try {
     const project = path.join(d, 'node_modules', 'plugin'),
@@ -116,7 +116,8 @@ test('deployment resolves npm-hoisted dependencies and rejects symlinked package
     assert.equal(api.verifyDeployment(release), true);
     const moved = path.join(d, 'external-dependency');
     fs.renameSync(dependency, moved);
-    fs.symlinkSync(moved, dependency);
+    if (!symlink(moved, dependency, t, process.platform === 'win32' ? 'junction' : undefined))
+      return;
     assert.throws(
       () => api.stageDeployment({project, root: path.join(d, 'owned'), node}),
       /symlink/,
@@ -125,3 +126,18 @@ test('deployment resolves npm-hoisted dependencies and rejects symlinked package
     fs.rmSync(d, {recursive: true, force: true});
   }
 });
+
+function symlink(target, link, t, type) {
+  try {
+    fs.symlinkSync(target, link, type);
+    return true;
+  } catch (e) {
+    if (process.platform === 'win32' && e.code === 'EPERM') {
+      t.skip(
+        'File symlinks require Windows Developer Mode or elevation; junction coverage runs separately',
+      );
+      return false;
+    }
+    throw e;
+  }
+}

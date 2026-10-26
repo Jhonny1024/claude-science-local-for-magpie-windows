@@ -26,14 +26,16 @@ function files(dir, prefix = '') {
       if (e.isSymbolicLink()) throw Error('Refusing symlink: ' + rel);
       if (e.isDirectory()) return files(path.join(dir, e.name), rel);
       if (!e.isFile()) throw Error('Unsupported deployment entry: ' + rel);
-      return [rel];
+      return [rel.split(path.sep).join('/')];
     });
 }
 export function verifyDeployment(deployment) {
   if (
     !deployment ||
     !path.isAbsolute(deployment.path) ||
-    deployment.node !== path.join(deployment.path, 'bin', 'node')
+    !['node', 'node.exe'].some(
+      (name) => deployment.node === path.join(deployment.path, 'bin', name),
+    )
   )
     throw Error('Deployment executable must be the owned Node copy');
   safePath(deployment.path);
@@ -72,18 +74,31 @@ function dependencyRoot(project, dependency) {
   }
   throw Error('Cannot verify dependency package metadata: ' + dependency);
 }
-export function stageDeployment({project, root, node = process.execPath}) {
+export function stageDeployment({
+  project,
+  root,
+  node = process.execPath,
+  platform = process.platform,
+}) {
   safePath(project);
   safePath(root);
   const entries = new Map();
   const add = (source, prefix) => {
     safePath(source);
     for (const rel of files(source))
-      entries.set(path.join(prefix, rel), fs.readFileSync(path.join(source, rel)));
+      entries.set(
+        path.posix.join(prefix.replaceAll('\\', '/'), rel),
+        fs.readFileSync(path.join(source, rel)),
+      );
   };
   add(path.join(project, 'src'), 'src');
   safePath(path.join(project, 'package.json'));
-  const pkg = fs.readFileSync(path.join(project, 'package.json'));
+  const metadata = JSON.parse(fs.readFileSync(path.join(project, 'package.json'), 'utf8'));
+  // The plugin sandbox has no Node/process APIs. Select its static platform
+  // declaration when staging a Windows runtime; macOS keeps its original entry.
+  if (platform === 'win32' && metadata.magpie?.agent === './src/agent.js')
+    metadata.magpie.agent = './src/agent-windows.js';
+  const pkg = Buffer.from(JSON.stringify(metadata, null, 2) + '\n');
   entries.set('package.json', pkg);
   for (const name of ['LICENSE', 'NOTICE.md']) {
     const file = path.join(project, name);
@@ -98,13 +113,14 @@ export function stageDeployment({project, root, node = process.execPath}) {
     throw Error('Unsupported production dependency; update the deployment copier');
   for (const dependency of dependencies)
     add(dependencyRoot(project, dependency), path.join('node_modules', dependency));
-  entries.set('bin/node', fs.readFileSync(fs.realpathSync(node)));
+  const nodeName = platform === 'win32' ? 'node.exe' : 'node';
+  entries.set('bin/' + nodeName, fs.readFileSync(fs.realpathSync(node)));
   const manifest = Object.fromEntries(
     [...entries].sort(([a], [b]) => a.localeCompare(b)).map(([name, bytes]) => [name, hash(bytes)]),
   );
   const id = hash(JSON.stringify(manifest)),
     release = path.join(root, 'releases', id);
-  const result = {id, path: release, node: path.join(release, 'bin', 'node')};
+  const result = {id, path: release, node: path.join(release, 'bin', nodeName)};
   if (fs.existsSync(release)) {
     verifyDeployment(result);
     return result;
@@ -116,7 +132,10 @@ export function stageDeployment({project, root, node = process.execPath}) {
     for (const [name, bytes] of entries) {
       const target = path.join(staging, name);
       fs.mkdirSync(path.dirname(target), {recursive: true, mode: 0o700});
-      fs.writeFileSync(target, bytes, {mode: name === 'bin/node' ? 0o700 : 0o600, flag: 'wx'});
+      fs.writeFileSync(target, bytes, {
+        mode: name.startsWith('bin/node') ? 0o700 : 0o600,
+        flag: 'wx',
+      });
     }
     fs.writeFileSync(path.join(staging, 'manifest.json'), JSON.stringify(manifest), {mode: 0o600});
     fs.renameSync(staging, release);

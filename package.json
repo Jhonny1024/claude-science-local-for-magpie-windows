@@ -1,14 +1,15 @@
 {
   "name": "claude-science-local-for-magpie",
-  "version": "0.3.1",
-  "description": "让原版 Claude Science 使用 Magpie 的模型，并在 Science 内自由切换（macOS）。",
+  "version": "0.3.2-windows.1",
+  "description": "让原版 Claude Science 使用 Magpie 的模型（macOS / Windows）。",
   "type": "module",
   "scripts": {
     "test": "node --test test/*.test.mjs",
     "test:integration": "node test/integration.mjs",
     "check:package": "node scripts/check-package.mjs",
     "format": "prettier --write \"src/**/*.js\" \"test/**/*.mjs\" \"scripts/**/*.mjs\"",
-    "format:check": "prettier --check \"src/**/*.js\" \"test/**/*.mjs\" \"scripts/**/*.mjs\""
+    "format:check": "prettier --check \"src/**/*.js\" \"test/**/*.mjs\" \"scripts/**/*.mjs\"",
+    "test:windows:native": "node test/native-windows.mjs"
   },
   "magpie": {
     "agent": "./src/agent.js",
@@ -29,15 +30,16 @@
     "modelCatalog": true
   },
   "os": [
-    "darwin"
+    "darwin",
+    "win32"
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nickzhangcomes/claude-science-local-for-magpie.git"
+    "url": "git+https://github.com/Jhonny1024/claude-science-local-for-magpie-windows.git"
   },
-  "homepage": "https://github.com/nickzhangcomes/claude-science-local-for-magpie#readme",
+  "homepage": "https://github.com/Jhonny1024/claude-science-local-for-magpie-windows#readme",
   "bugs": {
-    "url": "https://github.com/nickzhangcomes/claude-science-local-for-magpie/issues"
+    "url": "https://github.com/Jhonny1024/claude-science-local-for-magpie-windows/issues"
   },
   "author": "nickzhangcomes",
   "keywords": [
@@ -53,9 +55,13 @@
     "LICENSE",
     "NOTICE.md",
     "COMPATIBILITY.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "science-local.cmd"
   ],
   "devDependencies": {
     "prettier": "3.9.10"
-  }
+  },
+  "contributors": [
+    "Jhonny1024 (Windows port)"
+  ]
 }

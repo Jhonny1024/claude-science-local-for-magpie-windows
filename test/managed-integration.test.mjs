@@ -22,7 +22,13 @@ async function until(check, timeout = 6000) {
 
 test(
   'installer and copied runtime install, upgrade and uninstall against isolated services',
-  {timeout: 90000},
+  {
+    timeout: 90000,
+    skip:
+      process.platform === 'win32'
+        ? 'macOS launchctl/shebang fixture; Windows lifecycle covered separately'
+        : false,
+  },
   async () => {
     const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'science-managed-')));
     const configRoot = path.join(home, '.config', 'magpie');

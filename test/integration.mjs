@@ -5,17 +5,20 @@ import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {once} from 'node:events';
+import os from 'node:os';
+import {stageDeployment} from '../src/deployment.js';
+import {discoverBinary} from '../src/config.js';
 import {createBridge} from '../src/bridge.js';
 import {modelAlias} from '../src/models.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const binary = process.env.MAGPIE_BIN || '/Applications/magpie.app/Contents/MacOS/magpie';
+const binary = discoverBinary('magpie', {home: os.homedir()});
 fs.accessSync(binary, fs.constants.X_OK);
 const bun =
   process.env.MAGPIE_BUN ||
   (process.env.PATH || '')
     .split(path.delimiter)
-    .map((dir) => path.join(dir, 'bun'))
+    .map((dir) => path.join(dir, process.platform === 'win32' ? 'bun.exe' : 'bun'))
     .find((file) => {
       try {
         fs.accessSync(file, fs.constants.X_OK);
@@ -39,6 +42,17 @@ const home = path.join(lab, 'home');
 fs.mkdirSync(home);
 const env = {
   PATH: process.env.PATH,
+  ...(process.platform === 'win32'
+    ? {
+        SystemRoot: process.env.SystemRoot,
+        ComSpec: process.env.ComSpec,
+        USERPROFILE: home,
+        APPDATA: path.join(home, 'AppData', 'Roaming'),
+        LOCALAPPDATA: path.join(home, 'AppData', 'Local'),
+        TEMP: lab,
+        TMP: lab,
+      }
+    : {}),
   HOME: home,
   USER: 'magpie-test',
   LOGNAME: 'magpie-test',
@@ -65,7 +79,12 @@ let server,
   logs = '';
 const calls = [];
 async function cli(args) {
-  const child = spawn(binary, args, {cwd: root, env, stdio: ['ignore', 'pipe', 'pipe']});
+  const child = spawn(binary, args, {
+    cwd: root,
+    env,
+    windowsHide: true,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
   children.add(child);
   let output = '';
   child.stdout.on('data', (data) => {
@@ -207,7 +226,11 @@ try {
   assert.equal(prior.model, 'fake/luna');
   assert.ok(prior.displayName);
   await cli(['plugin', 'off', legacy]);
-  await cli(['plugin', 'add', root]);
+  const pluginRoot =
+    process.platform === 'win32'
+      ? stageDeployment({project: root, root: path.join(lab, 'deployed')}).path
+      : root;
+  await cli(['plugin', 'add', pluginRoot]);
   const agents = await cli(['agents']);
   assert.match(agents, /science-local/);
   const plugins = await cli(['plugin', 'list', '--json']);

@@ -9,6 +9,7 @@ export const help = `Usage: node src/cli.js <install|upgrade|rollback|doctor|res
   --magpie <executable>     Also MAGPIE_BIN, PATH, or the macOS app
   --science <executable>    Also SCIENCE_BIN, PATH, or the installed runtime/app
   --science-port <port> --preview-port <port> --bridge-port <port>
+  SCIENCE_LOCAL_HOME       Optional runtime directory (Windows default: project/.science-local-runtime)
   --help                   Show help without modifying anything
 `;
 const keys = {
@@ -74,22 +75,58 @@ export async function selectModel({models, requested, previous, choose}) {
   if (!ids.includes(selected)) throw Error('Selection is not in the Magpie catalog');
   return selected;
 }
-export function discoverBinary(kind, {explicit, env = process.env, home} = {}) {
+export function discoverBinary(
+  kind,
+  {explicit, env = process.env, home, platform = process.platform} = {},
+) {
+  const windows = platform === 'win32';
   const name = kind === 'magpie' ? 'magpie' : 'claude-science';
+  const names = windows
+    ? kind === 'magpie'
+      ? [
+          'magpie-cli-windows-amd64.exe',
+          'magpie-cli-windows-arm64.exe',
+          'magpie.exe',
+          'magpie-windows-amd64.exe',
+          'magpie-windows-arm64.exe',
+          name,
+        ]
+      : ['claude-science.exe', name]
+    : [name];
   const specified = explicit || env[kind === 'magpie' ? 'MAGPIE_BIN' : 'SCIENCE_BIN'];
   const candidates = specified
     ? [path.resolve(specified)]
     : [
         ...(env.PATH || '')
-          .split(path.delimiter)
+          .split(windows ? ';' : path.delimiter)
           .filter(Boolean)
-          .map((p) => path.resolve(p, name)),
-        ...(kind === 'magpie'
-          ? ['/Applications/magpie.app/Contents/MacOS/magpie']
-          : [
-              path.join(home, '.claude-science', 'bin', 'claude-science'),
-              '/Applications/Claude Science.app/Contents/Resources/bin/claude-science',
-            ]),
+          .flatMap((p) => names.map((n) => path.resolve(p, n))),
+        ...(windows
+          ? kind === 'magpie'
+            ? [
+                path.join(home, 'Desktop', 'magpie-cli-windows-amd64.exe'),
+                path.join(home, 'Desktop', 'magpie-cli-windows-arm64.exe'),
+                path.join(home, 'Desktop', 'magpie-windows-amd64.exe'),
+                path.join(home, 'Desktop', 'magpie-windows-arm64.exe'),
+                path.join(home, 'AppData', 'Local', 'Programs', 'Magpie', 'magpie.exe'),
+              ]
+            : [
+                path.join(
+                  home,
+                  'AppData',
+                  'Local',
+                  'Programs',
+                  'ClaudeScience',
+                  'claude-science.exe',
+                ),
+                path.join(home, '.claude-science', 'bin', 'claude-science.exe'),
+              ]
+          : kind === 'magpie'
+            ? ['/Applications/magpie.app/Contents/MacOS/magpie']
+            : [
+                path.join(home, '.claude-science', 'bin', 'claude-science'),
+                '/Applications/Claude Science.app/Contents/Resources/bin/claude-science',
+              ]),
       ];
   for (const candidate of candidates) {
     try {

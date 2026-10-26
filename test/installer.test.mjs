@@ -14,7 +14,11 @@ test('doctor explains the missing setup after a marketplace-only installation wi
     fs.writeFileSync(registry, JSON.stringify({plugins: [{spec: 'magpie-science-local@latest'}]}));
     const before = fs.readFileSync(registry, 'utf8'),
       output = [];
-    await createInstaller({home, log: (line) => output.push(line)}).execute({command: 'doctor'});
+    await createInstaller({
+      home,
+      runtimeRoot: path.join(home, 'runtime'),
+      log: (line) => output.push(line),
+    }).execute({command: 'doctor'});
     assert.match(output.join('\n'), /node src\/cli.js install/);
     assert.match(output.join('\n'), /Magpie/);
     assert.equal(fs.readFileSync(registry, 'utf8'), before);
@@ -85,7 +89,7 @@ test('install uses stable release; failed upgrade restores previous selection an
     const stateFile = path.join(home, '.config/magpie/science-local-runtime/state.json'),
       before = fs.readFileSync(stateFile, 'utf8'),
       s = JSON.parse(before);
-    assert.match(s.pluginSpec, /releases\/[a-f0-9]{64}$/);
+    assert.match(s.pluginSpec, /releases[\\/][a-f0-9]{64}$/);
     assert.ok(s.node.startsWith(s.pluginSpec));
     assert.equal(s.model, 'fake/second');
     assert.equal(s.gatewayOverride, true);
@@ -103,11 +107,11 @@ test('install uses stable release; failed upgrade restores previous selection an
     fs.rmSync(home, {recursive: true, force: true});
   }
 });
-test('npm-style symlink entry executes help', () => {
+test('npm-style symlink entry executes help', (t) => {
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'science-symlink-')));
   try {
     const link = path.join(dir, 'cli');
-    fs.symlinkSync(path.join(project, 'src', 'cli.js'), link);
+    if (!symlink(path.join(project, 'src', 'cli.js'), link, t)) return;
     const r = spawnSync(process.execPath, [link, '--help'], {encoding: 'utf8'});
     assert.equal(r.status, 0);
     assert.match(r.stdout, /Usage:/);
@@ -366,3 +370,18 @@ test('catalog upgrade selects magpie; rollback restores the legacy model selecti
     fs.rmSync(home, {recursive: true, force: true});
   }
 });
+
+function symlink(target, link, t, type) {
+  try {
+    fs.symlinkSync(target, link, type);
+    return true;
+  } catch (e) {
+    if (process.platform === 'win32' && e.code === 'EPERM') {
+      t.skip(
+        'File symlinks require Windows Developer Mode or elevation; junction coverage runs separately',
+      );
+      return false;
+    }
+    throw e;
+  }
+}

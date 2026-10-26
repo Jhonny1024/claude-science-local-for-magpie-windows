@@ -3,10 +3,11 @@
 ## Supported setup
 
 - macOS; original app in `/Applications/Claude Science.app`.
+- Windows; per-user Science installation in `~/AppData/Local/Programs/ClaudeScience`, or an explicit `--science` executable. Windows uses PowerShell CIM for process ownership, a private runtime ACL, and Windows Script Host for user-login startup.
 - Official Node.js 22 or 24, with system-library linkage.
 - Default user configuration directory and an unrelocated Science installation.
 - One Science integration active at a time.
-- No claim of Windows/Linux support or Anthropic cloud-service compatibility.
+- Linux remains unsupported. Anthropic cloud-service compatibility is not guaranteed. Windows ARM64 has not been tested locally.
 
 ## Evidence, 2026-10-24
 
@@ -30,3 +31,16 @@ Magpie may support more recent Science versions, but this local compatibility la
 Science may estimate costs using its own compatibility-model rules. Use Magpie and the upstream provider as the usage/billing reference.
 
 Starting in 0.3.1, stale composer selections fall back to a currently available default. This optional UI adapter is restricted to the verified Science 0.1.70 web asset, in the plugin's independent data directory. It does not modify the macOS application bundle or historical messages. A different UI version/build leaves the original picker intact and reports `modelFallback: unsupported` in `doctor`; users can still select a model manually. Disconnect, rollback and uninstall restore the owned asset; user edits are preserved as conflicts.
+
+## Windows port verification, 2026-10-26
+
+Local port: `0.3.2-windows.1`, based on upstream `43b28e0` (`0.3.1`). Host: Windows x64, Node 22.22.2, Science 0.1.70. macOS execution was not available on this host; macOS-specific behavior is retained in its original branch and CI now includes both operating systems with Node 22/24. Remote CI results are separate from local evidence.
+
+- Local regression: 76 tests total; 70 passed and 6 skipped (5 file-symlink privilege cases and the macOS launchctl integration fixture). The Windows junction, ACL and lifecycle equivalents ran.
+- Windows lifecycle tests exercise copied Node.exe, paths with spaces, hidden login startup, manager logs, install/upgrade, injected upgrade failure recovery, rollback, restart, uninstall after a manager crash, session retention and original-config restoration.
+- ACL checks verify a protected current-user FullControl rule. Junction paths are rejected. POSIX-only permission assertions do not pretend to verify Windows ACLs; file-symlink tests skip when Windows does not grant symlink creation.
+- The real installed Magpie loaded the staged Windows Agent in an isolated HOME. Legacy selection migration, two-model routing, streamed tools, alias restoration, token counting and isolation from other agents passed against local fake providers. This caught and fixed a Node-import incompatibility in the Agent sandbox; platform selection now happens during deployment, not inside that sandbox.
+- The real Windows Science started with its sandbox enabled and initialized the probe's own generated encryption material in DPAPI. Its official nonce form established a local browser session; `/api/auth/status` returned `authenticated: true`, `/api/models` returned the bridge's test model, and `/api/me` returned HTTP 200. The 0.1.70 model-fallback adapter was active. Shutdown restored the probe's original configuration.
+- The installed tarball's CLI, Agent contract and dependency deployment passed. Windows runtime files stay in the project by default; npm cache and verification files stay under `work/`.
+
+No paid-provider inference, complete research workflow, graphical desktop interaction, actual sign-out/sign-in cycle, or local macOS run was performed. The Startup script was executed directly in the test, including a Chinese path. Native tests used independent data and did not stop the existing user's Science instance.

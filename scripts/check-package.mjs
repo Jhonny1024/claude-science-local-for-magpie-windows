@@ -8,7 +8,13 @@ import {fileURLToPath, pathToFileURL} from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const temporary = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'science-package-')));
 const run = (bin, args, cwd = root) => {
+  if (bin === 'npm' && process.platform === 'win32') {
+    if (!process.env.npm_execpath) throw Error('Run this check with npm run check:package');
+    args = [process.env.npm_execpath, ...args];
+    bin = process.execPath;
+  }
   const r = spawnSync(bin, args, {
+    windowsHide: true,
     cwd,
     encoding: 'utf8',
     timeout: 120000,
@@ -28,6 +34,7 @@ try {
     'NOTICE.md',
     'COMPATIBILITY.md',
     'CHANGELOG.md',
+    'science-local.cmd',
   ]);
   for (const file of info.files) {
     assert.ok(
@@ -42,6 +49,10 @@ try {
   );
   for (const file of [
     'src/agent.js',
+    'src/agent-windows.js',
+    'src/windows-service.js',
+    'src/windows-launcher.js',
+    'science-local.cmd',
     'src/cli.js',
     'src/runtime.js',
     'src/bridge.js',
@@ -68,7 +79,7 @@ try {
   assert.equal(meta.magpie.middleware, undefined);
   assert.equal(meta.main, undefined);
   assert.equal(meta.magpie.agent, './src/agent.js');
-  assert.deepEqual(meta.os, ['darwin']);
+  assert.deepEqual(meta.os, ['darwin', 'win32']);
   for (const hook of ['preinstall', 'install', 'postinstall', 'prepare'])
     assert.equal(meta.scripts?.[hook], undefined, `No automatic install hook: ${hook}`);
   const agent = await import(pathToFileURL(path.join(installed, 'src/agent.js')));
