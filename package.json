@@ -1,6 +1,6 @@
 {
   "name": "claude-science-local-for-magpie",
-  "version": "0.3.2-windows.3",
+  "version": "0.3.2-windows.4",
   "description": "让原版 Claude Science 使用 Magpie 的模型（macOS / Windows）。",
   "type": "module",
   "scripts": {

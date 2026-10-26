@@ -6,7 +6,6 @@ import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {once} from 'node:events';
 import os from 'node:os';
-import {stageDeployment} from '../src/deployment.js';
 import {discoverBinary} from '../src/config.js';
 import {createBridge} from '../src/bridge.js';
 import {modelAlias} from '../src/models.js';
@@ -226,10 +225,7 @@ try {
   assert.equal(prior.model, 'fake/luna');
   assert.ok(prior.displayName);
   await cli(['plugin', 'off', legacy]);
-  const pluginRoot =
-    process.platform === 'win32'
-      ? stageDeployment({project: root, root: path.join(lab, 'deployed')}).path
-      : root;
+  const pluginRoot = root;
   await cli(['plugin', 'add', pluginRoot]);
   const agents = await cli(['agents']);
   assert.match(agents, /science-local/);
@@ -245,6 +241,16 @@ try {
   assert.deepEqual(agentConfig.models.map((m) => m.id).sort(), ['fake/astra', 'fake/luna']);
   assert.equal(agentConfig.gateway, base);
   assert.equal(agentConfig.key, 'magpie-science-local');
+  await cli(['plugin', 'rm', legacy]);
+  const afterDedup = JSON.parse(
+    fs.readFileSync(path.join(home, '.config/magpie/science-local.json')),
+  );
+  assert.equal(
+    afterDedup.key,
+    agentConfig.key,
+    'removing a disabled duplicate must keep the selected Agent connected',
+  );
+  assert.deepEqual(afterDedup.models, agentConfig.models);
   gateway = spawn(binary, ['serve'], {cwd: root, env, stdio: ['ignore', 'pipe', 'pipe']});
   children.add(gateway);
   gateway.stdout.on('data', (data) => {

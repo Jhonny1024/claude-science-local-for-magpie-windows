@@ -6,7 +6,8 @@ export const agent = {
   name: 'Claude Science Local for Magpie',
   config: '~/.config/magpie/science-local.json',
   format: 'json',
-  dir: '/Applications/Claude Science.app',
+  // Shared by the native macOS and Windows app; no platform APIs in this sandbox.
+  dir: '~/.claude-science',
   icon: SCIENCE_ICON,
   notice:
     '本地接入：首次使用须按插件 README 初始化本地服务；仅安装插件还不能启动 Science。在 Claude Science 的模型菜单中选择模型；Magpie 中可挑选开放给它的模型。列表改变后重开 Science 窗口。',

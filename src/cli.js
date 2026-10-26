@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
 import {createInterface} from 'node:readline/promises';
-import {enabledSciencePlugins, isPublishedSciencePlugin} from './plugin-identity.js';
+import {registrationPlan} from './registration.js';
 import {
   startupPath,
   startupScript,
@@ -62,10 +62,21 @@ export function createInstaller(deps = {}) {
     project = deps.project || sourceProject,
     env = deps.env || process.env;
   const configRoot = path.join(home, '.config', 'magpie');
+  const locationFile = path.join(configRoot, 'science-local-service.json');
+  const location = json(locationFile);
+  if (location && (typeof location.root !== 'string' || !path.isAbsolute(location.root)))
+    throw Error('Invalid Science service location');
+  const cacheRelative = path.relative(path.join(configRoot, 'plugins'), project);
+  const inPluginCache =
+    cacheRelative === '' ||
+    (!cacheRelative.startsWith('..' + path.sep) &&
+      cacheRelative !== '..' &&
+      !path.isAbsolute(cacheRelative));
   const root = path.resolve(
     deps.runtimeRoot ||
       env.SCIENCE_LOCAL_HOME ||
-      (windows
+      location?.root ||
+      (windows && !inPluginCache
         ? path.join(project, '.science-local-runtime')
         : path.join(configRoot, 'science-local-runtime')),
   );
@@ -164,9 +175,9 @@ export function createInstaller(deps = {}) {
       ? 'magpie'
       : state.model;
   }
-  function select(state) {
+  function select(state, existing = false) {
     const spec = state.registrationSpec || state.pluginSpec || state.project;
-    run(state.magpie, ['plugin', 'add', spec]);
+    if (!existing) run(state.magpie, ['plugin', 'add', spec]);
     run(state.magpie, ['plugin', 'on', spec]);
     if (selectionValue(state) !== 'magpie')
       run(state.magpie, [
@@ -260,21 +271,9 @@ export function createInstaller(deps = {}) {
         : read(originalConfig);
     checkOriginalConfig(baseline, originalDir);
     const registryBefore = json(path.join(configRoot, 'plugins.json'));
-    const enabledBefore = enabledSciencePlugins(registryBefore, [
-      project,
-      previous?.pluginSpec,
-      previous?.project,
-      previous?.registrationSpec,
-      previous?.sourceProject,
-    ]);
-    // Keep a published installation registered so Magpie can discover updates.
-    // Runtime binaries stay in a verified release. Rollback pins both halves locally.
-    const sourceSpec =
-      enabledBefore.find((e) => e.spec === previous?.sourceSpec)?.spec ||
-      enabledBefore.filter((e) => isPublishedSciencePlugin(e.spec)).at(-1)?.spec ||
-      previous?.sourceSpec;
-    const registrationSpec =
-      windows || options.command === 'rollback' ? deployment.path : sourceSpec || deployment.path;
+    const plan = registrationPlan({registry: registryBefore, project, root, previous});
+    const registrationSpec = plan.spec;
+    const sourceSpec = registrationSpec;
     if (previous) await stop(previous);
     if (windows && previous) assertProfileAvailable(previous);
     let reserved,
@@ -339,14 +338,18 @@ export function createInstaller(deps = {}) {
       );
       save(stateFile, JSON.stringify(state, null, 2));
       switched = true;
-      for (const entry of enabledBefore)
-        if (entry.spec !== state.registrationSpec) run(magpie, ['plugin', 'off', entry.spec]);
-      select(state);
+      for (const entry of plan.duplicates)
+        if (!entry.off) run(magpie, ['plugin', 'off', entry.spec]);
+      select(state, plan.existing);
       if (!previous) run(binary, ['stop', '--data-dir', originalDir]);
       await reserved.release();
       reserved = null;
       await launch(state);
       await healthy(state);
+      // Remove duplicate records only after the replacement is proven healthy.
+      // Runtime release files remain available for recovery and rollback.
+      for (const entry of plan.duplicates) run(magpie, ['plugin', 'rm', entry.spec]);
+      managedWrite(locationFile, JSON.stringify({root}, null, 2) + '\n', installJournal);
       if (windows)
         (deps.installDesktopEntries || installDesktopEntries)({
           state,
@@ -369,7 +372,16 @@ export function createInstaller(deps = {}) {
           throw new Error(
             error.message + '; user config edits preserved: ' + restored.conflicts.join(', '),
           );
-        run(magpie, ['plugin', 'off', failed.registrationSpec || failed.pluginSpec], true);
+        // Restore only this integration's registry records, never the whole registry.
+        if (!plan.existing) run(magpie, ['plugin', 'rm', plan.spec], true);
+        for (const entry of plan.entries) {
+          const current = json(path.join(configRoot, 'plugins.json'))?.plugins || [];
+          if (!current.some((e) => e.spec === entry.spec))
+            run(magpie, ['plugin', 'add', entry.spec]);
+          if (entry.options !== undefined)
+            run(magpie, ['plugin', 'options', entry.spec, JSON.stringify(entry.options)]);
+          run(magpie, ['plugin', entry.off ? 'off' : 'on', entry.spec]);
+        }
       }
       if (previous) {
         if (switched) save(stateFile, oldState);
@@ -385,11 +397,11 @@ export function createInstaller(deps = {}) {
         if (previous.installed !== false) {
           // Restore the user's actual source instead of resurrecting a removed checkout.
           if (registryBefore) {
-            for (const entry of enabledBefore) run(magpie, ['plugin', 'on', entry.spec]);
-            if (enabledBefore.length) run(magpie, ['science-local', selectionValue(recovered)]);
+            if (plan.entries.some((e) => !e.off))
+              run(magpie, ['science-local', selectionValue(recovered)]);
           } else select(recovered);
           await launch(recovered);
-          if (!registryBefore || enabledBefore.length) await healthy(recovered);
+          if (!registryBefore || plan.entries.some((e) => !e.off)) await healthy(recovered);
         } else {
           run(magpie, ['science-local', 'default'], true);
           restoreAll(installJournal);

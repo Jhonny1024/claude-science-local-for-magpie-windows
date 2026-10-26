@@ -13,7 +13,7 @@ test('agent declares the dedicated Science config and installed app', () => {
     name: 'Claude Science Local for Magpie',
     config: '~/.config/magpie/science-local.json',
     format: 'json',
-    dir: '/Applications/Claude Science.app',
+    dir: '~/.claude-science',
     icon: SCIENCE_ICON,
   });
 });

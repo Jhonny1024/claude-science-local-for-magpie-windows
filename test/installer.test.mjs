@@ -300,7 +300,7 @@ test('upgrade preserves a published source and failure restores it without reviv
     assert.equal(second.registrationSpec, github);
     assert.equal(second.sourceSpec, github);
     const rollback = await cli.execute({...options, command: 'rollback'});
-    assert.equal(rollback.registrationSpec, first.pluginSpec);
+    assert.equal(rollback.registrationSpec, github);
     assert.equal(rollback.sourceSpec, github);
     const upgradedAgain = await cli.execute({...options, command: 'upgrade'});
     assert.equal(upgradedAgain.registrationSpec, github);

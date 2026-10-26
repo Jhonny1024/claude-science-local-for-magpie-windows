@@ -240,6 +240,11 @@ test(
       assert.equal(path.dirname(cli.stateFile), runtimeRoot);
       assert.equal(path.extname(first.node), '.exe');
       assert.equal(first.sourceProject, source);
+      assert.equal(first.registrationSpec, source);
+      assert.deepEqual(
+        JSON.parse(fs.readFileSync(registryFile)).plugins.map((e) => e.spec),
+        [source],
+      );
       await cli.execute({command: 'open'});
       assert.deepEqual(opened.at(-1), [
         'open',

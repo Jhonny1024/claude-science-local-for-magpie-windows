@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.2-windows.4
+
+- Reuse the user's local or marketplace plugin source on Windows and macOS. Runtime release copies are never registered as plugins; rollback changes only the backend deployment.
+- Consolidate legacy duplicate registrations after successful startup, preserving selected-source options and restoring registry states on failure. Leave unrelated plugins untouched.
+- Remember the per-user service location across package/checkouts and keep marketplace runtime data outside replaceable plugin caches.
+- Use a shared native Science installation-directory marker in the sandboxed Agent declaration, so one source package works on both platforms.
+- Cover both installation routes, repeat upgrades, rollback, migration failure, path aliases, and real Magpie source-Agent loading and routing.
+
+
 ## 0.3.2-windows.3
 
 - Route standard desktop/Start Menu Science shortcuts through the managed service, preserving the original shortcuts for uninstall. Do not modify the Science installation or migrate its profile.

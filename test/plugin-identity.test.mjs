@@ -10,6 +10,7 @@ test('recognizes exact own package and GitHub source spellings', () => {
     'claude-science-local-for-magpie',
     'claude-science-local-for-magpie@0.3.0',
     'magpie-science-local',
+    'npm:claude-science-local-for-magpie@latest',
     'magpie-science-local@0.3.0',
     'nickzhangcomes/claude-science-local-for-magpie',
     'github:nickzhangcomes/claude-science-local-for-magpie#v0.3.0',
@@ -31,4 +32,13 @@ test('recognizes exact own package and GitHub source spellings', () => {
   ])
     assert.equal(isSciencePlugin(spec), false, String(spec));
   assert.equal(isSciencePlugin('/private/release', ['/private/release']), true);
+});
+
+test('Windows local path spelling does not produce a second source', () => {
+  assert.equal(isSciencePlugin('d:/Project/science', ['D:\\Project\\science']), true);
+  assert.equal(isSciencePlugin('D:/Project/science-other', ['D:\\Project\\science']), false);
+});
+
+test('POSIX source paths retain their case-sensitive identity', () => {
+  assert.equal(isSciencePlugin('/tmp/Science', ['/tmp/science']), false);
 });

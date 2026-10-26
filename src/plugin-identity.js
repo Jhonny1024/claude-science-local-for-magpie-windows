@@ -1,8 +1,9 @@
+import path from 'node:path';
 // Recognize this package, the original source, and the published Windows port.
 export function isPublishedSciencePlugin(spec) {
   if (typeof spec !== 'string') return false;
   if (
-    /^(?:claude-science-local-for-magpie|magpie-science-local)(?:@[a-zA-Z0-9^~.*+_-][a-zA-Z0-9.^~*+_-]*)?$/.test(
+    /^(?:npm:)?(?:claude-science-local-for-magpie|magpie-science-local)(?:@[a-zA-Z0-9^~.*+_-][a-zA-Z0-9.^~*+_-]*)?$/.test(
       spec,
     )
   )
@@ -19,7 +20,23 @@ export function isPublishedSciencePlugin(spec) {
 }
 export function isSciencePlugin(spec, localSpecs = []) {
   if (typeof spec !== 'string' || !spec) return false;
-  if (localSpecs.includes(spec)) return true;
+  if (
+    localSpecs.some((local) => {
+      if (typeof local !== 'string') return false;
+      if (local === spec) return true;
+      const windowsPath = (value) => /^[a-zA-Z]:[\\/]/.test(value) || value.startsWith('\\\\');
+      if (windowsPath(local) && windowsPath(spec))
+        return (
+          path.win32.normalize(local).toLowerCase() === path.win32.normalize(spec).toLowerCase()
+        );
+      return (
+        path.isAbsolute(local) &&
+        path.isAbsolute(spec) &&
+        path.normalize(local) === path.normalize(spec)
+      );
+    })
+  )
+    return true;
   return isPublishedSciencePlugin(spec);
 }
 export function enabledSciencePlugins(registry, localSpecs = []) {
