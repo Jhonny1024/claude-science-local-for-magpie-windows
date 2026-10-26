@@ -66,81 +66,105 @@ fs.writeFileSync(
 );
 fs.writeFileSync(state.pluginsFile, JSON.stringify({plugins: [{spec: process.cwd()}]}));
 let runtime;
+const cycles = [];
 try {
   await ports.release();
-  runtime = await runRuntime(state, {pollMs: 500, startTimeoutMs: 60000});
-  const deadline = Date.now() + 90000;
-  let status;
-  while (Date.now() < deadline) {
-    try {
-      status = JSON.parse(fs.readFileSync(state.statusFile));
-      if (status.state === 'running') break;
-      if (status.state === 'error') throw Error(status.error);
-    } catch (e) {
-      if (e.code !== 'ENOENT') throw e;
+  for (const cycle of ['first-start', 'reopen-same-data']) {
+    runtime = await runRuntime(state, {pollMs: 500, startTimeoutMs: 60000});
+    const deadline = Date.now() + 90000;
+    let status;
+    while (Date.now() < deadline) {
+      try {
+        status = JSON.parse(fs.readFileSync(state.statusFile));
+        if (status.state === 'running') break;
+        if (status.state === 'error') throw Error(status.error);
+      } catch (e) {
+        if (e.code !== 'ENOENT') throw e;
+      }
+      await new Promise((r) => setTimeout(r, 300));
     }
-    await new Promise((r) => setTimeout(r, 300));
-  }
-  assert.equal(status?.state, 'running');
-  const result = {scienceVersion: status.scienceVersion, modelFallback: status.modelFallback};
-  const urlOutput = spawnSync(
-    state.binary,
-    ['url', '--data-dir', data, '--config', state.scienceConfig],
-    {encoding: 'utf8', windowsHide: true, timeout: 10000},
-  );
-  const url = (urlOutput.stdout + '\n' + urlOutput.stderr).match(/https?:\/\/[^\s]+/)[0];
-  const origin = new URL(url).origin;
-  // Science deliberately requires a form POST before redeeming a launch nonce.
-  const signed = await fetch(origin + '/api/auth/nonce', {
-    method: 'POST',
-    headers: {'content-type': 'application/x-www-form-urlencoded', origin},
-    body: new URLSearchParams({nonce: new URL(url).searchParams.get('nonce'), dest: '/'}),
-  });
-  assert.equal(signed.status, 200);
-  const cookies = signed.headers
-    .getSetCookie()
-    .map((x) => x.split(';')[0])
-    .join('; ');
-  assert.ok(cookies, 'official local sign-in cookie');
-  const page = await fetch(origin + '/', {headers: {cookie: cookies}});
-  const html = await page.text();
-  const bootstrap = html.match(
-    /__OPERON__=Object\.assign\(\{\},globalThis\.__OPERON__,(\{.*?\})\)<\/script>/s,
-  );
-  assert.ok(bootstrap, 'official local UI bootstrap');
-  const browserToken = JSON.parse(bootstrap[1]).token;
-
-  for (const endpoint of ['/api/auth/status', '/api/models', '/api/me']) {
-    const r = await fetch(origin + endpoint, {
-      headers: {
-        cookie: cookies,
-        ...(browserToken ? {authorization: 'Bearer ' + browserToken} : {}),
-      },
+    assert.equal(status?.state, 'running');
+    const result = {
+      cycle,
+      scienceVersion: status.scienceVersion,
+      modelFallback: status.modelFallback,
+    };
+    const urlOutput = spawnSync(
+      state.binary,
+      ['url', '--data-dir', data, '--config', state.scienceConfig],
+      {encoding: 'utf8', windowsHide: true, timeout: 10000},
+    );
+    const url = (urlOutput.stdout + '\n' + urlOutput.stderr).match(/https?:\/\/[^\s]+/)[0];
+    const origin = new URL(url).origin;
+    // Science deliberately requires a form POST before redeeming a launch nonce.
+    const signed = await fetch(origin + '/api/auth/nonce', {
+      method: 'POST',
+      headers: {'content-type': 'application/x-www-form-urlencoded', origin},
+      body: new URLSearchParams({nonce: new URL(url).searchParams.get('nonce'), dest: '/'}),
     });
-    const body = await r.json();
-    if (endpoint === '/api/auth/status')
-      result.auth = {http: r.status, authenticated: body.authenticated, provider: body.provider};
-    if (endpoint === '/api/models') {
-      result.models = {
-        http: r.status,
-        count: Object.values(body.models || {}).flat().length,
-        authError: body.auth_error,
-        fetchError: body.fetch_error,
-        default: body.default_model_id,
-      };
-      assert.ok(
-        Object.values(body.models || {})
-          .flat()
-          .some((m) => m.name === 'Windows Test Model'),
-      );
+    assert.equal(signed.status, 200);
+    const cookies = signed.headers
+      .getSetCookie()
+      .map((x) => x.split(';')[0])
+      .join('; ');
+    assert.ok(cookies, 'official local sign-in cookie');
+    const page = await fetch(origin + '/', {headers: {cookie: cookies}});
+    const html = await page.text();
+    const bootstrap = html.match(
+      /__OPERON__=Object\.assign\(\{\},globalThis\.__OPERON__,(\{.*?\})\)<\/script>/s,
+    );
+    assert.ok(bootstrap, 'official local UI bootstrap');
+    const browserToken = JSON.parse(bootstrap[1]).token;
+
+    for (const endpoint of ['/api/auth/status', '/api/models', '/api/me']) {
+      const r = await fetch(origin + endpoint, {
+        headers: {
+          cookie: cookies,
+          ...(browserToken ? {authorization: 'Bearer ' + browserToken} : {}),
+        },
+      });
+      const body = await r.json();
+      if (endpoint === '/api/auth/status') {
+        assert.equal(r.status, 200);
+        assert.equal(body.authenticated, true, cycle + ' must retain local login');
+        assert.equal(
+          body.account_uuid,
+          ticket.account,
+          'the same generated account must survive reopen',
+        );
+        result.auth = {
+          http: r.status,
+          authenticated: body.authenticated,
+          provider: body.provider,
+          sameAccount: true,
+        };
+      }
+      if (endpoint === '/api/models') {
+        result.models = {
+          http: r.status,
+          count: Object.values(body.models || {}).flat().length,
+          authError: body.auth_error,
+          fetchError: body.fetch_error,
+          default: body.default_model_id,
+        };
+        assert.ok(
+          Object.values(body.models || {})
+            .flat()
+            .some((m) => m.name === 'Windows Test Model'),
+        );
+      }
+      if (endpoint === '/api/me') result.meHttp = r.status;
     }
-    if (endpoint === '/api/me') result.meHttp = r.status;
+    cycles.push(result);
+    console.log(JSON.stringify(result));
+    await runtime.shutdown();
+    runtime = null;
+    assert.equal(fs.readFileSync(state.originalConfig, 'utf8'), '# isolated original\n');
   }
   fs.writeFileSync(
     path.resolve('work/native-windows-result.json'),
-    JSON.stringify(result, null, 2),
+    JSON.stringify({cycles}, null, 2),
   );
-  console.log(JSON.stringify(result));
 } finally {
   if (runtime) await runtime.shutdown();
   gateway.closeAllConnections();

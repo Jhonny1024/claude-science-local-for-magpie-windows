@@ -44,3 +44,11 @@ Local port: `0.3.2-windows.1`, based on upstream `43b28e0` (`0.3.1`). Host: Wind
 - The installed tarball's CLI, Agent contract and dependency deployment passed. Windows runtime files stay in the project by default; npm cache and verification files stay under `work/`.
 
 No paid-provider inference, complete research workflow, graphical desktop interaction, actual sign-out/sign-in cycle, or local macOS run was performed. The Startup script was executed directly in the test, including a Chinese path. Native tests used independent data and did not stop the existing user's Science instance.
+
+## Reopen regression, 0.3.2-windows.2
+
+The reported installation was still running a 0.3.1 copied runtime while Magpie had been changed to the source checkout. That runtime did not recognize the checkout, disconnected and restored the original config; the unqualified desktop entry then opened the native login profile. A regression reproduced this transition before the fix and remained connected after persisting `sourceProject`. Explicitly disabling the Agent still disconnects and restores the native configuration.
+
+The native Windows test now performs two complete starts with the same data and generated local account. Both starts returned authenticated=true, the same account identity, the test model and HTTP 200 from /api/me. No ticket or encryption key is regenerated between starts. `open` checks the managed service before invoking Science with its explicit config and data path. This test does not claim a paid-provider conversation or a Windows reboot test.
+
+Local repair validation: 29 affected lifecycle/installer/config tests passed, one file-symlink privilege case skipped; four process-ownership tests passed. The existing managed installation was upgraded to 0.3.2-windows.2, opened through the explicit managed entry and returned authenticated=true and a non-empty model catalog. No paid inference request was sent.

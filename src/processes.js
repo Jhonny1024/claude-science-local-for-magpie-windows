@@ -1,5 +1,6 @@
 import {spawnSync} from 'node:child_process';
 import fs from 'node:fs';
+import path from 'node:path';
 
 // PID alone is not ownership: include the kernel's start time and full argv.
 export function readProcessIdentity(pid) {
@@ -142,4 +143,22 @@ export function acquireRuntimeOwner(file, owner) {
     fs.closeSync(fd);
     fs.unlinkSync(file + '.recovery');
   }
+}
+
+// A manual desktop launch can occupy the managed profile without the bridge
+// environment. Do not adopt it or kill it based only on a PID.
+export function assertProfileAvailable(state) {
+  const file = path.join(state.data, 'operon.lock');
+  let lock;
+  try {
+    if (fs.lstatSync(file).isSymbolicLink()) throw Error('Refusing symlink Science lock');
+    lock = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (e) {
+    if (e.code === 'ENOENT') return;
+    throw e;
+  }
+  if (Number.isSafeInteger(lock.pid) && lock.pid > 1 && readProcessIdentity(lock.pid))
+    throw Error(
+      'Science is already running for the managed data directory outside this service. Close that Science instance, then retry upgrade; use the integration open command afterwards.',
+    );
 }

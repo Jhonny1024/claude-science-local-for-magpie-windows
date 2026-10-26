@@ -4,7 +4,7 @@
 
 沿用你在 Magpie 中已有的模型账号和额度，支持在 Science 内自由切换模型。
 
-非官方插件；本仓库增加 Windows 支持，保留 macOS 用法。Windows 移植版本为 `0.3.2-windows.1`。不提供模型账号或额外额度。
+非官方插件；本仓库增加 Windows 支持，保留 macOS 用法。Windows 移植版本为 `0.3.2-windows.2`。不提供模型账号或额外额度。
 
 ## Windows 安装
 
@@ -25,7 +25,7 @@ npm ci --ignore-scripts
 .\science-local.cmd install
 ```
 
-按提示选默认模型；安装器会在 Magpie 注册本地 Windows 插件，无需先安装上游插件。安装后重新打开 Science。路径无法自动找到时：
+按提示选默认模型；安装器会在 Magpie 注册本地 Windows 插件，无需先安装上游插件。安装后可用 `.\science-local.cmd open` 明确打开这份独立实例。路径无法自动找到时：
 
 ```powershell
 .\science-local.cmd install --magpie "D:\Apps\magpie.exe" --science "D:\Apps\ClaudeScience\claude-science.exe"
@@ -38,12 +38,15 @@ npm ci --ignore-scripts
 - 可在首次安装前设置 `SCIENCE_LOCAL_HOME` 指定另一运行目录，之后维护命令必须使用同一设置。已安装后不要直接移动项目；先卸载，再移动并重新安装。
 
 ```powershell
+.\science-local.cmd open
 .\science-local.cmd doctor
 .\science-local.cmd upgrade
 .\science-local.cmd restart
 .\science-local.cmd rollback
 .\science-local.cmd uninstall
 ```
+
+如果再次打开跳到原版登录页，先运行 `doctor` 查看后台是否断开、安装版本是否落后。仅更新源码或重新添加 Magpie 插件不会更新后台；请执行 `upgrade`，再执行 `open`。若提示已有实例占用独立数据目录，先关闭该 Science 实例再重试，不要删除数据目录或登录文件。明确关闭 Magpie 中本 Agent 后，接入仍会断开，原版账号登录界面是恢复原配置后的正常状态。
 
 卸载保留独立会话和模型身份，移除本插件拥有的登录入口并恢复原配置。出现用户修改冲突时会停止恢复，请根据 `doctor` 和 journal 处理。
 

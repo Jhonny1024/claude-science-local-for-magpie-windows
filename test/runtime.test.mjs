@@ -179,3 +179,34 @@ test('changing installation source to our package keeps Science connected', asyn
     await f.cleanup();
   }
 });
+
+test('switching a copied deployment to its saved source checkout keeps the managed session connected', async () => {
+  const f = await fixture();
+  const sourceProject = path.join(f.root, 'source-checkout');
+  f.state.sourceProject = sourceProject;
+  fs.writeFileSync(f.file, JSON.stringify(f.state));
+  try {
+    f.start();
+    await until(() => f.status().state === 'running');
+    const pid = f.status().sciencePid;
+    fs.writeFileSync(f.state.pluginsFile, JSON.stringify({plugins: [{spec: sourceProject}]}));
+    await until(
+      () => f.status().activePluginSpec === sourceProject || f.status().state === 'disconnected',
+    );
+    assert.equal(
+      f.status().state,
+      'running',
+      'a saved source checkout must not revert to native login',
+    );
+    assert.equal(f.status().sciencePid, pid);
+    assert.equal(fs.readFileSync(f.state.originalConfig, 'utf8'), 'data_dir="managed"\n');
+    fs.writeFileSync(
+      f.state.pluginsFile,
+      JSON.stringify({plugins: [{spec: sourceProject, off: true}]}),
+    );
+    await until(() => f.status().state === 'disconnected');
+    assert.equal(fs.readFileSync(f.state.originalConfig, 'utf8'), '# ORIGINAL\n');
+  } finally {
+    await f.cleanup();
+  }
+});

@@ -76,3 +76,22 @@ test('daemon signalling requires matching recorded identity and owned data/confi
     if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
   }
 });
+
+test('a manually started process occupying the managed profile is reported rather than adopted', () => {
+  const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'science-profile-lock-'));
+  const file = path.join(root, 'operon.lock');
+  try {
+    fs.writeFileSync(file, JSON.stringify({pid: process.pid}));
+    assert.throws(
+      () => api.assertProfileAvailable({data: root}),
+      /already running.*outside this service/,
+    );
+    assert.ok(api.readProcessIdentity(process.pid), 'the occupying process is not terminated');
+    fs.writeFileSync(file, JSON.stringify({pid: 99999999}));
+    assert.doesNotThrow(() => api.assertProfileAvailable({data: root}));
+    fs.unlinkSync(file);
+    assert.doesNotThrow(() => api.assertProfileAvailable({data: root}));
+  } finally {
+    fs.rmSync(root, {recursive: true, force: true});
+  }
+});

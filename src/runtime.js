@@ -84,7 +84,12 @@ export async function runRuntime(
   function selected() {
     const c = readJSON(state.agentConfig),
       p = readJSON(state.pluginsFile);
-    const entries = enabledSciencePlugins(p, [pluginSpec, state.project, state.registrationSpec]);
+    const entries = enabledSciencePlugins(p, [
+      pluginSpec,
+      state.project,
+      state.registrationSpec,
+      state.sourceProject,
+    ]);
     const entry =
       entries.find((x) => x.spec === (state.registrationSpec || pluginSpec)) || entries[0];
     activePluginSpec = entry?.spec || null;
@@ -271,10 +276,10 @@ export async function runRuntime(
     let c;
     try {
       c = selected();
-    } catch {
+    } catch (e) {
       await stopChild();
       restore();
-      status({state: 'disconnected'});
+      status({state: 'disconnected', reason: e.message});
       return;
     }
     if (child && child.exitCode === null && child.signalCode === null) {

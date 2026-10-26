@@ -163,6 +163,7 @@ test(
     const magpie = path.join(home, 'magpie.exe');
     fs.writeFileSync(magpie, 'fixture');
     const registryFile = path.join(configRoot, 'plugins.json');
+    const opened = [];
     let fail = false,
       state;
     const invoke = (bin, args) => {
@@ -197,7 +198,10 @@ test(
           );
         return {status: 0, stdout: ''};
       }
-      if (bin === process.execPath && args[0] === 'stop') return {status: 0, stdout: ''};
+      if (bin === process.execPath && ['stop', 'open'].includes(args[0])) {
+        if (args[0] === 'open') opened.push(args);
+        return {status: 0, stdout: ''};
+      }
       return run(bin, args);
     };
     const cli = createInstaller({
@@ -233,6 +237,15 @@ test(
       const first = (state = await cli.execute({...options, command: 'install'}));
       assert.equal(path.dirname(cli.stateFile), runtimeRoot);
       assert.equal(path.extname(first.node), '.exe');
+      assert.equal(first.sourceProject, source);
+      await cli.execute({command: 'open'});
+      assert.deepEqual(opened.at(-1), [
+        'open',
+        '--config',
+        first.scienceConfig,
+        '--data-dir',
+        first.data,
+      ]);
       assert.ok(fs.existsSync(startupPath(home)));
       fs.writeFileSync(path.join(first.data, 'retained-session'), 'keep');
       const originalAuth = fs.readFileSync(path.join(first.auth, 'encryption.key'));

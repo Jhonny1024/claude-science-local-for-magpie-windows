@@ -16,6 +16,7 @@ import {
   requestShutdown,
   stopWindowsOrphan,
 } from './windows-service.js';
+import {assertProfileAvailable} from './processes.js';
 import {makeTicket} from './ticket.js';
 import {managedWrite, restoreAll} from './files.js';
 import {scienceConfig, checkOriginalConfig, launchPlist, label} from './setup.js';
@@ -263,6 +264,7 @@ export function createInstaller(deps = {}) {
       previous?.pluginSpec,
       previous?.project,
       previous?.registrationSpec,
+      previous?.sourceProject,
     ]);
     // Keep a published installation registered so Magpie can discover updates.
     // Runtime binaries stay in a verified release. Rollback pins both halves locally.
@@ -273,6 +275,7 @@ export function createInstaller(deps = {}) {
     const registrationSpec =
       windows || options.command === 'rollback' ? deployment.path : sourceSpec || deployment.path;
     if (previous) await stop(previous);
+    if (windows && previous) assertProfileAvailable(previous);
     let reserved,
       switched = false;
     try {
@@ -282,6 +285,7 @@ export function createInstaller(deps = {}) {
         installed: true,
         platform,
         project: deployment.path,
+        sourceProject: project,
         pluginSpec: deployment.path,
         registrationSpec,
         sourceSpec,
@@ -343,7 +347,7 @@ export function createInstaller(deps = {}) {
       await launch(state);
       await healthy(state);
       log(
-        `${options.command === 'rollback' ? 'Rolled back' : previous ? 'Upgraded' : 'Installed'}. Default model: ${model}. ${selectionValue(state) === 'magpie' ? 'Choose models in Science; manage the available list in Magpie. ' : ''}Open the original Claude Science app.`,
+        `${options.command === 'rollback' ? 'Rolled back' : previous ? 'Upgraded' : 'Installed'}. Default model: ${model}. ${selectionValue(state) === 'magpie' ? 'Choose models in Science; manage the available list in Magpie. ' : ''}${windows ? 'Run science-local.cmd open to open this managed instance.' : 'Open the original Claude Science app.'}`,
       );
       return state;
     } catch (error) {
@@ -405,6 +409,14 @@ export function createInstaller(deps = {}) {
       log(
         `Plugin source: ${state.registrationSpec || state.pluginSpec || state.project}\nInstalled runtime version: ${json(path.join(state.pluginSpec || state.project, 'package.json'))?.version || 'unknown'}\nThis CLI version: ${json(path.join(project, 'package.json'))?.version || 'unknown'}\nRuntime: ${state.pluginSpec || state.project}\nModel: ${json(state.agentConfig)?.model || state.model || '(disconnected)'}\nGateway: ${state.gateway || 'legacy'}\nService: ${read(state.statusFile) || '(no status)'}\nPrivate logs: ${root}`,
       );
+      const installedVersion = json(
+        path.join(state.pluginSpec || state.project, 'package.json'),
+      )?.version;
+      const checkoutVersion = json(path.join(project, 'package.json'))?.version;
+      if (installedVersion && checkoutVersion && installedVersion !== checkoutVersion)
+        log(
+          'The installed runtime differs from this checkout. Finish Science tasks, then run node src/cli.js upgrade to apply this checkout.',
+        );
       if (state.deployment) {
         try {
           verifyDeployment(state.deployment);
@@ -453,6 +465,18 @@ export function createInstaller(deps = {}) {
         return await install(options, state);
       if (!state) {
         log('Not installed.');
+        return;
+      }
+      if (options.command === 'open') {
+        if (state.installed === false) throw Error('Install the integration before opening it');
+        if (!ownedManager(state)) await launch(state);
+        else if (json(state.statusFile)?.state === 'disconnected')
+          throw Error(
+            'Science is disconnected in Magpie. Enable this Agent; after changing plugin source, run upgrade.',
+          );
+        await healthy(state);
+        run(state.binary, ['open', '--config', state.scienceConfig, '--data-dir', state.data]);
+        log('Opened the managed Science instance.');
         return;
       }
       if (options.command === 'restart') {

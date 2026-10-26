@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import net from 'node:net';
 
-export const help = `Usage: node src/cli.js <install|upgrade|rollback|doctor|restart|uninstall> [options]
+export const help = `Usage: node src/cli.js <install|upgrade|rollback|doctor|open|restart|uninstall> [options]
   --model <catalog-id>      Initial/default model; select other models inside Science
                            Required for unattended first install
   --gateway <loopback-url>  Defaults to Magpie settings port, then 3425
@@ -25,7 +25,7 @@ export function parseArgs(args) {
   if (args.includes('--help') || args.includes('-h')) return {command: 'help'};
   const result = {command: args[0] || 'help'};
   if (
-    !['help', 'install', 'upgrade', 'rollback', 'doctor', 'restart', 'uninstall'].includes(
+    !['help', 'install', 'upgrade', 'rollback', 'doctor', 'open', 'restart', 'uninstall'].includes(
       result.command,
     )
   )

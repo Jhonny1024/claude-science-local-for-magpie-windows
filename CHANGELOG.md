@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.2-windows.2
+
+- Keep the original source-checkout identity in installed state, so switching Magpie from a copied release to that checkout does not disconnect the service and restore the native login profile.
+- Refuse a manual Science process already occupying the managed profile, with an actionable close/retry message; never silently adopt it.
+- Report the actual disconnect reason and warn when the running runtime differs from the checkout.
+- Add `open` to launch Science with the managed config and data directory, refusing a disconnected integration rather than silently opening another profile.
+- Test two real Windows Science starts against the same identity and data, without regenerating authentication material between runs.
+
 ## 0.3.2-windows.1 (local Windows port)
 
 - Add Windows executable discovery, copied Node.exe deployment, private ACLs, CIM process ownership and a graceful shutdown control record.

@@ -13,6 +13,7 @@ test('CLI options validate values without accepting unknown flags', () => {
     sciencePort: 1234,
   });
   assert.throws(() => config.parseArgs(['install', '--bogus']), /Unknown/);
+  assert.deepEqual(config.parseArgs(['open']), {command: 'open'});
 });
 test('model selection preserves valid existing choice and requires explicit unattended choice', async () => {
   assert.equal(typeof config.selectModel, 'function');
