@@ -4,7 +4,7 @@
 
 沿用你在 Magpie 中已有的模型账号和额度，支持在 Science 内自由切换模型。
 
-非官方插件；本仓库增加 Windows 支持，保留 macOS 用法。Windows 移植版本为 `0.3.2-windows.2`。不提供模型账号或额外额度。
+非官方插件；本仓库增加 Windows 支持，保留 macOS 用法。Windows 移植版本为 `0.3.2-windows.3`。不提供模型账号或额外额度。
 
 ## Windows 安装
 
@@ -25,14 +25,14 @@ npm ci --ignore-scripts
 .\science-local.cmd install
 ```
 
-按提示选默认模型；安装器会在 Magpie 注册本地 Windows 插件，无需先安装上游插件。安装后可用 `.\science-local.cmd open` 明确打开这份独立实例。路径无法自动找到时：
+按提示选默认模型；安装器会在 Magpie 注册本地 Windows 插件，无需先安装上游插件。安装后直接点击桌面或开始菜单的 **Claude Science**；这两个标准快捷方式会接入 Magpie，卸载时恢复。也可用 `.\science-local.cmd open` 打开。路径无法自动找到时：
 
 ```powershell
 .\science-local.cmd install --magpie "D:\Apps\magpie.exe" --science "D:\Apps\ClaudeScience\claude-science.exe"
 ```
 
 - 运行数据、模型身份、后台日志和 Science 临时文件默认在项目的 `.science-local-runtime\`，本项目的 npm 缓存在 `work\npm-cache\`，都留在项目所在盘。
-- Windows 保留必要的小型用户入口：Magpie 的配置、原 Science 配置，以及用户 Startup 目录的 `magpie-science-local.vbs`。现有 Science/Magpie 安装和历史数据不自动搬迁。
+- Windows 保留必要的小型用户入口：Magpie 的配置、原 Science 配置，用户 Startup 目录的 `magpie-science-local.vbs`，以及桌面/开始菜单快捷方式。现有 Science/Magpie 安装、窗口缓存和历史数据不搬迁；不修改 Science 安装目录。
 - 登录 Windows 后由用户 Startup 脚本隐藏启动，不安装系统服务。需要系统允许 Windows Script Host；企业策略禁用它时，登录自启动不可用，可手动执行 `restart`。不要为此关闭系统安全策略。
 - Windows 的插件和后台程序固定到同一份本地部署；更新本项目后执行 `upgrade`，不会自动追随上游 GitHub 插件。
 - 可在首次安装前设置 `SCIENCE_LOCAL_HOME` 指定另一运行目录，之后维护命令必须使用同一设置。已安装后不要直接移动项目；先卸载，再移动并重新安装。
@@ -45,6 +45,8 @@ npm ci --ignore-scripts
 .\science-local.cmd rollback
 .\science-local.cmd uninstall
 ```
+
+旧版用户执行 `upgrade` 一次以更新后台和桌面入口，之后直接点击 Science。模型菜单只列常用项时，展开 **More models** 可查看其余 Magpie 模型（包括路由组）。
 
 如果再次打开跳到原版登录页，先运行 `doctor` 查看后台是否断开、安装版本是否落后。仅更新源码或重新添加 Magpie 插件不会更新后台；请执行 `upgrade`，再执行 `open`。若提示已有实例占用独立数据目录，先关闭该 Science 实例再重试，不要删除数据目录或登录文件。明确关闭 Magpie 中本 Agent 后，接入仍会断开，原版账号登录界面是恢复原配置后的正常状态。
 

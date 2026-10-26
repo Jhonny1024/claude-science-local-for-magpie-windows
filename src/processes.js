@@ -12,7 +12,7 @@ export function readProcessIdentity(pid) {
         '-NoProfile',
         '-NonInteractive',
         '-Command',
-        `[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); $p = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}" -ErrorAction Stop; if ($p) { if (!$p.CommandLine) { throw 'Process command line unavailable' }; [pscustomobject]@{created=$p.CreationDate.ToUniversalTime().Ticks.ToString();command=$p.CommandLine} | ConvertTo-Json -Compress }`,
+        `[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); $p = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}" -ErrorAction Stop; if ($p) { if (!$p.CommandLine) { $live = Get-Process -Id ${pid} -ErrorAction SilentlyContinue; if (!$live -or $live.HasExited) { exit 0 }; throw 'Process command line unavailable' }; [pscustomobject]@{created=$p.CreationDate.ToUniversalTime().Ticks.ToString();command=$p.CommandLine} | ConvertTo-Json -Compress }`,
       ],
       {encoding: 'utf8', timeout: 10000, windowsHide: true},
     );

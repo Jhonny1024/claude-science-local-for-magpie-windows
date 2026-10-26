@@ -210,6 +210,8 @@ test(
       runtimeRoot,
       env: {},
       run: invoke,
+      openDesktop: async (s) =>
+        opened.push(['open', '--config', s.scienceConfig, '--data-dir', s.data]),
       scienceArgs: [scienceScript],
       log: () => {},
       waitHealthy: async (s) => {

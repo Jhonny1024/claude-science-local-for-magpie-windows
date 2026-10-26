@@ -14,11 +14,12 @@ export function windowsArgument(value) {
   if (/[\r\n\0]/.test(s)) throw Error('Invalid Windows argument');
   return '"' + s.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, '$1$1') + '"';
 }
-export function startupScript(state, stateFile) {
+export function startupScript(state, stateFile, action) {
   const command = [
     state.node,
     path.join(state.pluginSpec || state.project, 'src', 'windows-launcher.js'),
     stateFile,
+    ...(action ? [action] : []),
   ]
     .map(windowsArgument)
     .join(' ');

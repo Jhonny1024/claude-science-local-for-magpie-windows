@@ -52,3 +52,11 @@ The reported installation was still running a 0.3.1 copied runtime while Magpie 
 The native Windows test now performs two complete starts with the same data and generated local account. Both starts returned authenticated=true, the same account identity, the test model and HTTP 200 from /api/me. No ticket or encryption key is regenerated between starts. `open` checks the managed service before invoking Science with its explicit config and data path. This test does not claim a paid-provider conversation or a Windows reboot test.
 
 Local repair validation: 29 affected lifecycle/installer/config tests passed, one file-symlink privilege case skipped; four process-ownership tests passed. The existing managed installation was upgraded to 0.3.2-windows.2, opened through the explicit managed entry and returned authenticated=true and a non-empty model catalog. No paid inference request was sent.
+
+## Native desktop entry repair, 0.3.2-windows.3
+
+The .2 API-only reopen checks did not cover the standard Windows desktop launcher. That launcher could start an unconfigured daemon in the managed profile; the manager then refused ownership. Also, the previous integration `open` invoked Science's browser command, not its native window.
+
+The .3 installer journals and redirects the existing standard desktop and Start Menu shortcuts to the manager. After readiness, it hands a freshly minted official local sign-in link to Science 0.1.70's existing attach-only native shell. It does not edit the installed Science executable, migrate its window profile, enable debugging, or disable either sandbox. Custom shortcuts are left unchanged.
+
+Local validation: 19 desktop/Windows lifecycle/process/installer tests passed and one file-symlink privilege case skipped. Package installation and formatting checks passed. The native window was opened and inspected: Magpie model names and a routing-group model appeared under More models. The local installation was upgraded to .3 and both standard shortcuts were checked. A subsequent desktop launch attached to the managed daemon and the service reported running with 69 configured models. Existing failed conversation banners remain historical errors; no new paid inference was initiated by this verification, and a fresh user conversation remains the end-to-end inference check.

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.2-windows.3
+
+- Route standard desktop/Start Menu Science shortcuts through the managed service, preserving the original shortcuts for uninstall. Do not modify the Science installation or migrate its profile.
+- Open the verified Science 0.1.70 native shell with its official attach-only handoff and a fresh local nonce, instead of a browser tab or an unconfigured second daemon. Keep Electron and execution sandboxes enabled.
+- Distinguish a process that exits during a CIM query from a live process whose command line cannot be inspected.
+- Add native handoff and shortcut restoration regressions.
+
+
 ## 0.3.2-windows.2
 
 - Keep the original source-checkout identity in installed state, so switching Magpie from a copied release to that checkout does not disconnect the service and restore the native login profile.

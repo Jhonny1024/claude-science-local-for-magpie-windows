@@ -16,6 +16,7 @@ import {
   requestShutdown,
   stopWindowsOrphan,
 } from './windows-service.js';
+import {openWindowsDesktop, installDesktopEntries} from './windows-desktop.js';
 import {assertProfileAvailable} from './processes.js';
 import {makeTicket} from './ticket.js';
 import {managedWrite, restoreAll} from './files.js';
@@ -346,8 +347,16 @@ export function createInstaller(deps = {}) {
       reserved = null;
       await launch(state);
       await healthy(state);
+      if (windows)
+        (deps.installDesktopEntries || installDesktopEntries)({
+          state,
+          stateFile,
+          home,
+          journal: installJournal,
+          run,
+        });
       log(
-        `${options.command === 'rollback' ? 'Rolled back' : previous ? 'Upgraded' : 'Installed'}. Default model: ${model}. ${selectionValue(state) === 'magpie' ? 'Choose models in Science; manage the available list in Magpie. ' : ''}${windows ? 'Run science-local.cmd open to open this managed instance.' : 'Open the original Claude Science app.'}`,
+        `${options.command === 'rollback' ? 'Rolled back' : previous ? 'Upgraded' : 'Installed'}. Default model: ${model}. ${selectionValue(state) === 'magpie' ? 'Choose models in Science; manage the available list in Magpie. ' : ''}${windows ? 'Click the Science desktop or Start Menu shortcut to open through Magpie.' : 'Open the original Claude Science app.'}`,
       );
       return state;
     } catch (error) {
@@ -475,7 +484,8 @@ export function createInstaller(deps = {}) {
             'Science is disconnected in Magpie. Enable this Agent; after changing plugin source, run upgrade.',
           );
         await healthy(state);
-        run(state.binary, ['open', '--config', state.scienceConfig, '--data-dir', state.data]);
+        if (windows) await (deps.openDesktop || openWindowsDesktop)(state, run);
+        else run(state.binary, ['open', '--config', state.scienceConfig, '--data-dir', state.data]);
         log('Opened the managed Science instance.');
         return;
       }
